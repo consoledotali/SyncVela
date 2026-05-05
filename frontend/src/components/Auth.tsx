@@ -18,7 +18,6 @@ export default function Auth() {
     setError("");
     setIsLoading(true);
 
-    // Dynamic endpoint logic
     const endpoint = isLogin ? "/api/auth/login" : "/api/auth/register";
     const payload = isLogin ? { email, password } : { name, email, password };
 
@@ -26,6 +25,8 @@ export default function Auth() {
       const response = await fetch(`http://localhost:5000${endpoint}`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
+        // 🛡️ NAYA: Yeh line lazmi hai taake browser backend se aane wali cookie ko accept kare
+        credentials: "include", 
         body: JSON.stringify(payload),
       });
 
@@ -35,8 +36,10 @@ export default function Auth() {
         throw new Error(data.error || "Authentication failed");
       }
 
-      // STATE UPDATE: Token ko Zustand (localStorage) mein save karna
-      login(data.user, data.token);
+      // STATE UPDATE: Sirf Access Token (data.token) Zustand mein save hoga. 
+      // Refresh token browser ne khud hidden cookie mein save kar liya hai.
+      login(data.user, data.accessToken || data.token); 
+      // Note: Backend se ab data.accessToken aa raha hai, fallback ke liye data.token rakha hai.
     } catch (err: any) {
       setError(err.message);
     } finally {

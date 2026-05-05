@@ -17,9 +17,10 @@ export default function ChatPage() {
     setActiveRoomId,
     addMessage,
     setMessages,
-    setTypingStatus,
     setOnlineUsers,
     setTargetLastReadAt,
+    addTypingUser,
+    removeTypingUser,
   } = useChatStore();
   const { isAuthenticated, user } = useAuthStore();
   const [mounted, setMounted] = useState(false);
@@ -105,7 +106,6 @@ export default function ChatPage() {
     };
 
     const handleNewMessage = (message: Message) => {
-      // 1. React closures se bachne ke liye direct RAM (Store) se latest data nikalo
       const chatState = useChatStore.getState();
       const authState = useAuthStore.getState();
 
@@ -113,18 +113,15 @@ export default function ChatPage() {
       const currentRoomId = chatState.activeRoomId;
       const me = authState.user;
 
-      // 2. Kis user ko top par lana hai? (Sender ya Receiver)
       const isMeSender = message.senderId === me?.id;
       const targetUserId = isMeSender
         ? currentSelectedUser?.id
         : message.senderId;
 
       if (targetUserId) {
-        console.log(`🚀 Triggering Jump for User ID: ${targetUserId}`);
         chatState.moveUserToTop(targetUserId);
       }
 
-      // 3. UI Badges & Read Receipts
       if (currentSelectedUser?.id === message.senderId) {
         chatState.addMessage(message);
 
@@ -136,20 +133,61 @@ export default function ChatPage() {
         }
       } else {
         chatState.incrementUnread(message.senderId);
+
+        // NAYA: Ab tempId bhi sath wapis bhejo
+        socket.emit("markAsDelivered", {
+          messageId: message.id,
+          senderId: message.senderId,
+          tempId: message.tempId,
+        });
       }
     };
 
-    const handleTyping = () => setTypingStatus(true);
-    const handleStopTyping = () => setTypingStatus(false);
+    const handleTyping = ({ senderId }: { senderId: string }) => {
+      useChatStore.getState().addTypingUser(senderId);
+    };
+
+    const handleStopTyping = ({ senderId }: { senderId: string }) => {
+      useChatStore.getState().removeTypingUser(senderId);
+    };
+
+    // YEH PURANA WALA HATA DO AUR YEH NAYA LAGA DO
+    const handleMessageDelivered = ({
+      messageId,
+      tempId,
+    }: {
+      messageId: string;
+      tempId?: string;
+    }) => {
+      // Ek hi call mein dono bhej do, store khud handle kar lega
+      useChatStore
+        .getState()
+        .updateMessageStatus(messageId, "delivered", tempId);
+    };
+
+    // NAYA: Jab message database mein chala jaye aur asli ID mil jaye
+    const handleMessageAck = ({
+      tempId,
+      realId,
+    }: {
+      tempId: string;
+      realId: string;
+    }) => {
+      useChatStore.getState().updateRealMessageId(tempId, realId);
+    };
 
     socket.on("roomJoined", handleRoomJoined);
     socket.on("messagesRead", handleMessagesRead);
     socket.on("receiveMessage", handleNewMessage);
+
     socket.on("userTyping", handleTyping);
     socket.on("userStoppedTyping", handleStopTyping);
+
     socket.on("getOnlineUsers", (userIds: string[]) => {
       setOnlineUsers(userIds);
     });
+    socket.on("messageDelivered", handleMessageDelivered);
+    socket.on("messageSentAck", handleMessageAck);
 
     const handleDisconnect = () => {
       console.warn("⚠️ Server connection lost. Clearing online users.");
@@ -166,15 +204,18 @@ export default function ChatPage() {
       socket.off("userStoppedTyping", handleStopTyping);
       socket.off("getOnlineUsers");
       socket.off("disconnect", handleDisconnect);
+      socket.off("messageDelivered", handleMessageDelivered);
+      socket.off("messageSentAck", handleMessageAck);
     };
   }, [
     socket,
     setActiveRoomId,
     addMessage,
     setMessages,
-    setTypingStatus,
     setOnlineUsers,
     setTargetLastReadAt,
+    addTypingUser,
+    removeTypingUser,
   ]);
 
   if (!mounted) return null;

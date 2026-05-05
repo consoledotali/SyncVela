@@ -43,40 +43,64 @@ export const handleChatEvents = (io: Server, socket: AuthenticatedSocket) => {
     }
   });
 
-  // 2. Sending Messages (Updated for Direct Routing & Timestamp Engine)
+  // 2. Sending Messages
   socket.on(
     "sendPrivateMessage",
-    async (payload: { roomId: string; text: string; targetUserId: string }) => {
+    async (payload: {
+      roomId: string;
+      text?: string;         
+      attachmentUrl?: string; 
+      targetUserId: string;
+      tempId?: string;
+    }) => {
       try {
-        // A. Pehle message database mein save karo
+        // 1. STRICT VALIDATION: Empty message ko database tak pohnchne se roko
+        const hasText = payload.text && payload.text.trim() !== "";
+        const hasAttachment = payload.attachmentUrl && payload.attachmentUrl.trim() !== "";
+
+        if (!hasText && !hasAttachment) {
+          console.log(`⚠️ Empty message blocked from User [${userId}]`);
+          return; // Ignore empty requests silently or emit error if needed
+        }
+
+        // 2. PRISMA DATABASE SAVE
         const savedMessage = await prisma.message.create({
           data: {
-            content: payload.text,
+            content: hasText ? payload.text?.trim() : null, 
+            attachmentUrl: hasAttachment ? payload.attachmentUrl : null,
             senderId: userId as string,
             conversationId: payload.roomId,
           },
         });
 
-        // B. NAYA: Kamre ki ghari (clock) update karo taake list mein user top par aaye
+        // 3. Update Conversation Last Message Time
         await prisma.conversation.update({
           where: { id: payload.roomId },
-          data: { lastMessageAt: savedMessage.createdAt }, // Naye message ka time yahan dal gaya
+          data: { lastMessageAt: savedMessage.createdAt },
         });
 
+        // 4. Prepare Broadcast Payload
         const broadcastPayload = {
           id: savedMessage.id,
           text: savedMessage.content,
+          attachmentUrl: savedMessage.attachmentUrl, // Naya URL bhejo
           senderId: savedMessage.senderId,
           createdAt: savedMessage.createdAt,
+          tempId: payload.tempId,
         };
 
-        // C. Target user ko directly bhej do
+        // 5. Send to Target User
         socket
           .to(payload.targetUserId)
           .emit("receiveMessage", broadcastPayload);
-        console.log(
-          `🔒 Message routed directly to User [${payload.targetUserId}]`,
-        );
+
+        // 6. Send Acknowledgement Back to Sender
+        if (payload.tempId) {
+          socket.emit("messageSentAck", {
+            tempId: payload.tempId,
+            realId: savedMessage.id,
+          });
+        }
       } catch (error) {
         console.error("❌ Message fail hua:", error);
       }
@@ -118,12 +142,27 @@ export const handleChatEvents = (io: Server, socket: AuthenticatedSocket) => {
     },
   );
 
-  // 3. Typing Indicators
+  // 5. NAYA: Mark as Delivered (Jab user online ho par chat open na ho)
+  socket.on(
+    "markAsDelivered",
+    (payload: { messageId: string; senderId: string; tempId?: string }) => {
+      socket.to(payload.senderId).emit("messageDelivered", {
+        messageId: payload.messageId,
+        tempId: payload.tempId,
+      });
+    },
+  );
+
+  // Jab koi type karna shuru kare
   socket.on("typing", (payload: { targetUserId: string }) => {
-    socket.to(payload.targetUserId).emit("userTyping", userId);
+    // targetUserId ko event bhejo, aur sath apna (sender ka) ID bhi bhejo
+    socket.to(payload.targetUserId).emit("userTyping", { senderId: userId });
   });
 
+  // Jab koi type karna band kare
   socket.on("stopTyping", (payload: { targetUserId: string }) => {
-    socket.to(payload.targetUserId).emit("userStoppedTyping", userId);
+    socket
+      .to(payload.targetUserId)
+      .emit("userStoppedTyping", { senderId: userId });
   });
 };

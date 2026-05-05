@@ -62,8 +62,9 @@ model Participant {
 
 model Message {
   id         String   @id @default(cuid())
-  sequenceId Int      @unique @default(autoincrement()) // Cursor pagination optimization
-  content    String
+  sequenceId Int      @unique @default(autoincrement())
+  content    String?
+  attachmentUrl  String?
   createdAt  DateTime @default(now())
 
   senderId String
