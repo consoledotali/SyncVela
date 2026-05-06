@@ -1,60 +1,35 @@
 import { Request, Response } from "express";
-import bcrypt from "bcryptjs";
-import jwt from "jsonwebtoken";
-import prisma from "../config/db";
+import * as authService from "../services/authService";
 
-const generateTokens = (userId: string) => {
-  const accessToken = jwt.sign(
-    { userId },
-    process.env.JWT_SECRET as string,
-    { expiresIn: "15m" }, // Access token 15 min
-  );
-
-  const refreshToken = jwt.sign(
-    { userId },
-    (process.env.JWT_REFRESH_SECRET || process.env.JWT_SECRET) as string,
-    { expiresIn: "7d" }, // Refresh token 7 din
-  );
-
-  return { accessToken, refreshToken };
-};
-
-// 🛡️ NAYA: Cookie Set karne ka enterprise helper
-const setRefreshTokenCookie = (res: Response, token: string) => {
+// Helper strictly typed
+const setRefreshTokenCookie = (res: Response, token: string): void => {
   res.cookie("refreshToken", token, {
-    httpOnly: true, // Frontend JS can't access it (XSS protection)
-    secure: process.env.NODE_ENV === "production", // Prod mein HTTPS lazmi
-    sameSite: "lax", // CSRF protection
-    maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days in milliseconds
+    httpOnly: true,
+    secure: process.env.NODE_ENV === "production",
+    sameSite: "lax",
+    maxAge: 7 * 24 * 60 * 60 * 1000, 
   });
 };
 
-export const registerUser = async (
-  req: Request,
-  res: Response,
-): Promise<void> => {
+export const registerUser = async (req: Request, res: Response): Promise<void> => {
   try {
-    // ... validation and DB insert logic same as before ...
     const { email, name, password } = req.body;
-    const salt = await bcrypt.genSalt(10);
-    const hashedPassword = await bcrypt.hash(password, salt);
+    
+    // Yahan ts ko pata hai ke authService.register strictly AuthResponse dega
+    const { user, tokens } = await authService.register(email, name, password);
 
-    const newUser = await prisma.user.create({
-      data: { email, name, password: hashedPassword },
-    });
+    setRefreshTokenCookie(res, tokens.refreshToken);
 
-    const { accessToken, refreshToken } = generateTokens(newUser.id);
-
-    // Refresh token cookie mein set karo
-    setRefreshTokenCookie(res, refreshToken);
-
-    // Response mein sirf Access Token aur User data bhejo
     res.status(201).json({
       message: "User registered successfully",
-      accessToken,
-      user: { id: newUser.id, name: newUser.name, email: newUser.email },
+      accessToken: tokens.accessToken,
+      user, // Sanitize ho kar aaya hai
     });
-  } catch (error) {
+  } catch (error: unknown) {
+    if (error instanceof Error && error.message === "Email already in use") {
+      res.status(400).json({ error: error.message });
+      return;
+    }
     res.status(500).json({ error: "Internal server error." });
   }
 };
@@ -62,69 +37,55 @@ export const registerUser = async (
 export const loginUser = async (req: Request, res: Response): Promise<void> => {
   try {
     const { email, password } = req.body;
-    const user = await prisma.user.findUnique({ where: { email } });
-    if (!user || !(await bcrypt.compare(password, user.password))) {
-      res.status(401).json({ error: "Invalid credentials." });
-      return;
-    }
+    const { user, tokens } = await authService.login(email, password);
 
-    const { accessToken, refreshToken } = generateTokens(user.id);
+    setRefreshTokenCookie(res, tokens.refreshToken);
 
-    // Refresh token cookie mein set karo
-    setRefreshTokenCookie(res, refreshToken);
-
-    // Response mein sirf Access Token bhejo
     res.status(200).json({
       message: "Login successful",
-      accessToken,
-      user: { id: user.id, name: user.name, email: user.email },
+      accessToken: tokens.accessToken,
+      user, // Sanitize ho kar aaya hai
     });
-  } catch (error) {
-    res.status(500).json({ error: "Server error." });
+  } catch (error: unknown) {
+    const errorMessage = error instanceof Error ? error.message : "Invalid credentials.";
+    res.status(401).json({ error: errorMessage });
   }
 };
 
-export const refreshAccessToken = async (
-  req: Request,
-  res: Response,
-): Promise<void> => {
+export const refreshAccessToken = async (req: Request, res: Response): Promise<void> => {
   try {
-    // 🛡️ NAYA: Body ke bajaye Cookie se token uthao
-    const refreshToken = req.cookies?.refreshToken;
-
+    const refreshToken = req.cookies?.refreshToken as string | undefined;
+    
     if (!refreshToken) {
       res.status(401).json({ error: "Refresh token is missing" });
       return;
     }
 
-    const decoded = jwt.verify(
-      refreshToken,
-      (process.env.JWT_REFRESH_SECRET || process.env.JWT_SECRET) as string,
-    ) as { userId: string };
-
-    // Naya 15 min wala access token banao
-    const accessToken = jwt.sign(
-      { userId: decoded.userId },
-      process.env.JWT_SECRET as string,
-      { expiresIn: "15m" },
-    );
-
+    const { accessToken } = await authService.refresh(refreshToken);
     res.status(200).json({ accessToken });
-  } catch (error) {
+  } catch (error: unknown) {
     console.error("❌ Invalid or Expired Refresh Token");
-    // Security: Agar cookie invalid ho toh usay clear bhi kar do
     res.clearCookie("refreshToken");
-    res
-      .status(403)
-      .json({ error: "Invalid refresh token. Please login again." });
+    res.status(403).json({ error: "Invalid refresh token. Please login again." });
   }
 };
 
-// 🛡️ NAYA: Logout controller (Taake cookie clear ho jaye)
-export const logoutUser = async (
-  req: Request,
-  res: Response,
-): Promise<void> => {
-  res.clearCookie("refreshToken");
-  res.status(200).json({ message: "Logged out successfully" });
+export const logoutUser = async (req: Request, res: Response): Promise<void> => {
+  try {
+    const refreshToken = req.cookies?.refreshToken as string | undefined;
+    
+    if (refreshToken) {
+        const jwt = require("jsonwebtoken");
+        // Strict generic casting for decode
+        const decoded = jwt.decode(refreshToken) as authService.JwtPayload | null;
+        if (decoded?.userId) {
+            await authService.logout(decoded.userId);
+        }
+    }
+
+    res.clearCookie("refreshToken");
+    res.status(200).json({ message: "Logged out successfully" });
+  } catch (error: unknown) {
+    res.status(500).json({ error: "Logout failed" });
+  }
 };

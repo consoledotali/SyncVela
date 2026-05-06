@@ -67,13 +67,18 @@ export const SocketProvider = ({ children }: { children: React.ReactNode }) => {
       }
     });
 
-    // 🟡 SILENT TOKEN REFRESH INTERCEPTOR (NAYA CODE)
+    // 🟡 SILENT TOKEN REFRESH INTERCEPTOR
     socketInstance.on("connect_error", async (err) => {
-      // Backend se agar auth error aaye toh trigger karo
+      console.log("🔴 EXACT SOCKET ERROR:", err.message);
+      
+      const errorMessage = err.message.toLowerCase();
+
+      // 🛡️ NAYA: Strict (===) ki jagah .includes() use karo taake koi bhi auth error miss na ho
       if (
-        err.message === "Invalid token" ||
-        err.message === "jwt expired" ||
-        err.message === "Authentication error"
+        errorMessage.includes("invalid") ||
+        errorMessage.includes("expired") ||
+        errorMessage.includes("authentication") ||
+        errorMessage.includes("token")
       ) {
         console.warn("⚠️ Access token expired. Attempting silent refresh...");
 
@@ -81,29 +86,20 @@ export const SocketProvider = ({ children }: { children: React.ReactNode }) => {
           const res = await fetch("http://localhost:5000/api/auth/refresh", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            // Agar backend cookies use karega toh yeh line lazmi hai
             credentials: "include",
           });
 
           if (!res.ok) throw new Error("Refresh failed");
 
           const data = await res.json();
+          console.log("✅ Token silently refreshed! Zustand will trigger reconnection.");
 
-          console.log(
-            "✅ Token silently refreshed! Zustand will trigger reconnection.",
-          );
-
-          // Zustand store ko update karo. Yeh line trigger karte hi React ka
-          // useEffect dobara chalega naye token ke sath!
+          // Zustand store update karo (ye lazmi token inject karega aur naya socket banayega)
           useAuthStore.setState({ token: data.accessToken });
+          
         } catch (error) {
           console.error("❌ Refresh token expired or failed. Forcing logout.");
-          // Agar refresh token bhi expire ho gaya, toh strictly user ko bahar nikalo
-          useAuthStore.setState({
-            token: null,
-            isAuthenticated: false,
-            user: null,
-          });
+          useAuthStore.getState().logout(); // Proper Zustand logout action use karo
           window.location.href = "/login";
         }
       }

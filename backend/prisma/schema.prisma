@@ -14,11 +14,14 @@ enum ParticipantRole {
 }
 
 model User {
-  id        String   @id @default(cuid())
-  email     String   @unique
+  id        String  @id @default(cuid())
+  email     String  @unique
   password  String
   name      String
   avatarUrl String?
+
+  refreshToken String? @db.Text
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
@@ -61,11 +64,11 @@ model Participant {
 }
 
 model Message {
-  id         String   @id @default(cuid())
-  sequenceId Int      @unique @default(autoincrement())
-  content    String?
-  attachmentUrl  String?
-  createdAt  DateTime @default(now())
+  id            String   @id @default(cuid())
+  sequenceId    Int      @unique @default(autoincrement())
+  content       String?
+  attachmentUrl String?
+  createdAt     DateTime @default(now())
 
   senderId String
   sender   User   @relation(fields: [senderId], references: [id], onDelete: Cascade)

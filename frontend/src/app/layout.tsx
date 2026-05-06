@@ -1,21 +1,18 @@
 import type { Metadata } from "next";
-import { Geist, Geist_Mono } from "next/font/google";
+import { Inter } from "next/font/google";
 import "./globals.css";
 import { SocketProvider } from "@/src/providers/SocketProvider";
 
-const geistSans = Geist({
-  variable: "--font-geist-sans",
+// 🛡️ ENTERPRISE FONT: Inter
+const inter = Inter({
+  variable: "--font-sans", // CSS variable mapped for Tailwind
   subsets: ["latin"],
-});
-
-const geistMono = Geist_Mono({
-  variable: "--font-geist-mono",
-  subsets: ["latin"],
+  display: "swap",
 });
 
 export const metadata: Metadata = {
-  title: "SyncVela",
-  description: "Real-time communication engine",
+  title: "SyncVela | Secure Workspace",
+  description: "Enterprise-grade real-time communication engine",
 };
 
 export default function RootLayout({
@@ -24,9 +21,9 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en">
+    <html lang="en" suppressHydrationWarning>
       <body
-        className={`${geistSans.variable} ${geistMono.variable} antialiased`}
+        className={`${inter.variable} font-sans antialiased bg-background text-foreground`}
       >
         <SocketProvider>{children}</SocketProvider>
       </body>
