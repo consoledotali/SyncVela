@@ -1,36 +1,56 @@
 import { Request, Response } from "express";
 import * as authService from "../services/authService";
 
-// Helper strictly typed
 const setRefreshTokenCookie = (res: Response, token: string): void => {
   res.cookie("refreshToken", token, {
     httpOnly: true,
     secure: process.env.NODE_ENV === "production",
     sameSite: "lax",
-    maxAge: 7 * 24 * 60 * 60 * 1000, 
+    maxAge: 7 * 24 * 60 * 60 * 1000,
   });
 };
 
-export const registerUser = async (req: Request, res: Response): Promise<void> => {
+export const registerUser = async (
+  req: Request,
+  res: Response,
+): Promise<void> => {
   try {
     const { email, name, password } = req.body;
-    
-    // Yahan ts ko pata hai ke authService.register strictly AuthResponse dega
-    const { user, tokens } = await authService.register(email, name, password);
+
+    // Notice: Tokens nahi aa rahe yahan ab
+    const response = await authService.register(email, name, password);
+
+    res.status(201).json({
+      message: "Registration successful. Please verify OTP.",
+      email: response.email,
+    });
+  } catch (error: unknown) {
+    const errorMessage =
+      error instanceof Error ? error.message : "Internal server error.";
+    res.status(400).json({ error: errorMessage });
+  }
+};
+
+export const verifyOTPHandler = async (
+  req: Request,
+  res: Response,
+): Promise<void> => {
+  try {
+    const { email, otp } = req.body;
+
+    const { user, tokens } = await authService.verifyOTP(email, otp);
 
     setRefreshTokenCookie(res, tokens.refreshToken);
 
-    res.status(201).json({
-      message: "User registered successfully",
+    res.status(200).json({
+      message: "Email verified and logged in successfully",
       accessToken: tokens.accessToken,
-      user, // Sanitize ho kar aaya hai
+      user,
     });
   } catch (error: unknown) {
-    if (error instanceof Error && error.message === "Email already in use") {
-      res.status(400).json({ error: error.message });
-      return;
-    }
-    res.status(500).json({ error: "Internal server error." });
+    const errorMessage =
+      error instanceof Error ? error.message : "Verification failed.";
+    res.status(400).json({ error: errorMessage });
   }
 };
 
@@ -44,18 +64,62 @@ export const loginUser = async (req: Request, res: Response): Promise<void> => {
     res.status(200).json({
       message: "Login successful",
       accessToken: tokens.accessToken,
-      user, // Sanitize ho kar aaya hai
+      user,
     });
   } catch (error: unknown) {
-    const errorMessage = error instanceof Error ? error.message : "Invalid credentials.";
+    const errorMessage =
+      error instanceof Error ? error.message : "Invalid credentials.";
+
+    // 🛡️ THE FIX: Catch block mein email dobara req.body se nikalo kyunke try block wala yahan expire ho chuka hai.
+    const fallbackEmail = req.body?.email;
+
+    // Frontend ko pata chalega ke isey OTP screen par bhejna hai
+    if (errorMessage === "EMAIL_NOT_VERIFIED") {
+      res.status(403).json({ error: errorMessage, email: fallbackEmail });
+      return;
+    }
+
     res.status(401).json({ error: errorMessage });
   }
 };
 
-export const refreshAccessToken = async (req: Request, res: Response): Promise<void> => {
+export const googleLoginHandler = async (
+  req: Request,
+  res: Response,
+): Promise<void> => {
+  try {
+    const { idToken } = req.body;
+
+    if (!idToken) {
+      res.status(400).json({ error: "Google ID Token is required" });
+      return;
+    }
+
+    const { user, tokens } = await authService.googleLogin(idToken);
+
+    setRefreshTokenCookie(res, tokens.refreshToken);
+
+    res.status(200).json({
+      message: "Google login successful",
+      accessToken: tokens.accessToken,
+      user,
+    });
+  } catch (error: unknown) {
+    const errorMessage =
+      error instanceof Error ? error.message : "Google Authentication failed";
+    console.error("❌ Google Auth Error:", errorMessage);
+    res.status(401).json({ error: errorMessage });
+  }
+};
+
+export const refreshAccessToken = async (
+  req: Request,
+  res: Response,
+): Promise<void> => {
+  console.log("🛠️ --- DEBUG: REFRESH API HIT ---");
   try {
     const refreshToken = req.cookies?.refreshToken as string | undefined;
-    
+
     if (!refreshToken) {
       res.status(401).json({ error: "Refresh token is missing" });
       return;
@@ -64,23 +128,26 @@ export const refreshAccessToken = async (req: Request, res: Response): Promise<v
     const { accessToken } = await authService.refresh(refreshToken);
     res.status(200).json({ accessToken });
   } catch (error: unknown) {
-    console.error("❌ Invalid or Expired Refresh Token");
     res.clearCookie("refreshToken");
-    res.status(403).json({ error: "Invalid refresh token. Please login again." });
+    res
+      .status(403)
+      .json({ error: "Invalid refresh token. Please login again." });
   }
 };
 
-export const logoutUser = async (req: Request, res: Response): Promise<void> => {
+export const logoutUser = async (
+  req: Request,
+  res: Response,
+): Promise<void> => {
   try {
     const refreshToken = req.cookies?.refreshToken as string | undefined;
-    
+
     if (refreshToken) {
-        const jwt = require("jsonwebtoken");
-        // Strict generic casting for decode
-        const decoded = jwt.decode(refreshToken) as authService.JwtPayload | null;
-        if (decoded?.userId) {
-            await authService.logout(decoded.userId);
-        }
+      const jwt = require("jsonwebtoken");
+      const decoded = jwt.decode(refreshToken) as authService.JwtPayload | null;
+      if (decoded?.userId) {
+        await authService.logout(decoded.userId);
+      }
     }
 
     res.clearCookie("refreshToken");

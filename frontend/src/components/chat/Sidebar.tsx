@@ -1,4 +1,5 @@
 import React from "react";
+import { useRouter } from "next/navigation"; // 🛡️ NAYA: Redirect ke liye
 import { useSocket } from "@/src/providers/SocketProvider";
 import { useChatStore, SidebarUser } from "@/src/store/chatStore";
 import { useAuthStore } from "@/src/store/authStore";
@@ -14,6 +15,7 @@ import { Button } from "@/src/components/ui/button";
 import { LogOut, Wifi, WifiOff, Users } from "lucide-react";
 
 export default function Sidebar() {
+  const router = useRouter(); // 🛡️ NAYA: Router hook
   const { socket, isConnected } = useSocket();
   const {
     users,
@@ -32,9 +34,28 @@ export default function Sidebar() {
     }
   };
 
-  const handleStrictLogout = () => {
-    resetChat(); // Memory Wipe
-    logout(); // Auth Wipe
+  // 🛡️ THE FIX: Enterprise Logout Flow
+  const handleStrictLogout = async () => {
+    try {
+      // 1. Backend Cookie Wipe (Lazmi)
+      await fetch("http://localhost:5000/api/auth/logout", {
+        method: "POST",
+        credentials: "include", // Cookie sath bhejne ke liye
+      });
+
+      // 2. Frontend Memory & Auth Wipe
+      resetChat();
+      logout();
+
+      // 3. Force Redirect to Login
+      router.push("/auth/login");
+    } catch (error) {
+      console.error("❌ Logout failed:", error);
+      // Agar backend down bhi ho, tab bhi frontend se nikal do
+      resetChat();
+      logout();
+      router.push("/auth/login");
+    }
   };
 
   const currentUserInitials = user?.name

@@ -24,7 +24,7 @@ export default function ChatPage() {
   // 🛡️ THE GATEKEEPER: Agar auth nahi hai toh seedha /login par phaink do
   useEffect(() => {
     if (mounted && !isAuthenticated) {
-      router.push("/login");
+      router.push("/auth/login");
     }
   }, [mounted, isAuthenticated, router]);
 

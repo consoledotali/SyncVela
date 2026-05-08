@@ -2,11 +2,11 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { useAuthStore } from "@/src/store/authStore";
 
-export const useAuthForm = () => {
+export const useAuthForm = (initialMode: boolean = true) => {
   const { login } = useAuthStore();
   const router = useRouter();
 
-  const [isLoginMode, setIsLoginMode] = useState(true);
+  const [isLoginMode, setIsLoginMode] = useState(initialMode);
   const [showPassword, setShowPassword] = useState(false);
   const [formData, setFormData] = useState({
     name: "",
@@ -15,12 +15,6 @@ export const useAuthForm = () => {
   });
   const [error, setError] = useState("");
   const [isLoading, setIsLoading] = useState(false);
-
-  const toggleMode = () => {
-    setIsLoginMode(!isLoginMode);
-    setError("");
-    setFormData({ name: "", email: "", password: "" });
-  };
 
   const togglePasswordVisibility = () => {
     setShowPassword(!showPassword);
@@ -54,16 +48,29 @@ export const useAuthForm = () => {
 
       const data = await response.json();
 
+      // 🛡️ 1. ERROR HANDLING & GATEKEEPER
       if (!response.ok) {
+        // Agar account verify nahi hai, toh seedha OTP screen par bhejo
+        if (data.error === "EMAIL_NOT_VERIFIED") {
+          router.push(
+            `/verify-otp?email=${encodeURIComponent(formData.email)}`,
+          );
+          return;
+        }
         throw new Error(
           data.error || "Authentication failed. Please check your credentials.",
         );
       }
 
-      login(data.user, data.accessToken || data.token);
-
-      // Strict Next.js Redirect
-      router.push("/");
+      // 🛡️ 2. SUCCESS HANDLING (Separated Logic)
+      if (isLoginMode) {
+        // Sirf login ki soorat mein state update karo aur andar jane do
+        login(data.user, data.accessToken || data.token);
+        router.push("/");
+      } else {
+        // Registration ki soorat mein token nahi milta, OTP screen par bhejo
+        router.push(`/verify-otp?email=${encodeURIComponent(formData.email)}`);
+      }
     } catch (err: any) {
       setError(err.message);
     } finally {
@@ -77,7 +84,6 @@ export const useAuthForm = () => {
     formData,
     error,
     isLoading,
-    toggleMode,
     togglePasswordVisibility,
     handleInputChange,
     handleSubmit,

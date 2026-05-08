@@ -4,8 +4,7 @@ import React, { useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { useAuthStore } from "@/src/store/authStore";
 import { useAuthForm } from "@/src/hooks/useAuthForm";
-
-// Shadcn Enterprise Components
+import { GoogleOAuthProvider, GoogleLogin } from "@react-oauth/google";
 import { Button } from "@/src/components/ui/button";
 import { Input } from "@/src/components/ui/input";
 import { Label } from "@/src/components/ui/label";
@@ -19,11 +18,18 @@ import {
 } from "@/src/components/ui/card";
 import { Eye, EyeOff, Loader2 } from "lucide-react";
 
-export default function LoginPage() {
-  const { isAuthenticated } = useAuthStore();
+// 🛡️ NAYA: Prop define karo taake pata chale yeh login page par khula hai ya signup par
+export function AuthScreen({
+  defaultMode,
+}: {
+  defaultMode: "login" | "signup";
+}) {
+  const { isAuthenticated, login } = useAuthStore();
   const router = useRouter();
 
-  // Guard: Redirect if already logged in
+  // Hook ko initial mode pass karo
+  const isInitiallyLogin = defaultMode === "login";
+
   useEffect(() => {
     if (isAuthenticated) {
       router.push("/");
@@ -36,11 +42,39 @@ export default function LoginPage() {
     formData,
     error,
     isLoading,
-    toggleMode,
     togglePasswordVisibility,
     handleInputChange,
     handleSubmit,
-  } = useAuthForm();
+  } = useAuthForm(isInitiallyLogin); // 🛡️ FIX: Hook ko initial state pass ki
+
+  // 🛡️ NAYA: Ab state toggle nahi karni, proper page change karna hai
+  const handleModeSwitch = () => {
+    if (isLoginMode) {
+      router.push("/auth/signup");
+    } else {
+      router.push("/auth/login");
+    }
+  };
+
+  const handleGoogleSuccess = async (credentialResponse: any) => {
+    try {
+      const idToken = credentialResponse.credential;
+      const res = await fetch("http://localhost:5000/api/auth/google", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ idToken }),
+      });
+
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Google Auth Failed");
+
+      login(data.user, data.accessToken);
+      router.push("/");
+    } catch (err: any) {
+      console.error("❌ Google Login Failed:", err.message);
+    }
+  };
 
   if (isAuthenticated) return null;
 
@@ -60,25 +94,12 @@ export default function LoginPage() {
 
         <CardContent>
           <form onSubmit={handleSubmit} className="space-y-4">
-            {/* Error Banner */}
             {error && (
               <div className="p-3 bg-red-50 border border-red-200 rounded-md flex items-center gap-2 text-sm text-red-600 font-medium">
-                <svg
-                  className="h-4 w-4 shrink-0"
-                  fill="currentColor"
-                  viewBox="0 0 20 20"
-                >
-                  <path
-                    fillRule="evenodd"
-                    d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z"
-                    clipRule="evenodd"
-                  />
-                </svg>
                 {error}
               </div>
             )}
 
-            {/* Registration Only: Name Field */}
             {!isLoginMode && (
               <div className="space-y-2">
                 <Label htmlFor="name">Full Name</Label>
@@ -96,7 +117,6 @@ export default function LoginPage() {
               </div>
             )}
 
-            {/* Email Field */}
             <div className="space-y-2">
               <Label htmlFor="email">Email</Label>
               <Input
@@ -112,7 +132,6 @@ export default function LoginPage() {
               />
             </div>
 
-            {/* Password Field */}
             <div className="space-y-2 relative">
               <div className="flex items-center justify-between">
                 <Label htmlFor="password">Password</Label>
@@ -147,7 +166,7 @@ export default function LoginPage() {
             <Button type="submit" className="w-full mt-6" disabled={isLoading}>
               {isLoading ? (
                 <>
-                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />{" "}
                   Processing...
                 </>
               ) : isLoginMode ? (
@@ -157,6 +176,32 @@ export default function LoginPage() {
               )}
             </Button>
           </form>
+
+          <div className="relative mt-6">
+            <div className="absolute inset-0 flex items-center">
+              <span className="w-full border-t border-zinc-200" />
+            </div>
+            <div className="relative flex justify-center text-xs uppercase">
+              <span className="bg-zinc-50 px-2 text-zinc-500">
+                Or continue with
+              </span>
+            </div>
+          </div>
+
+          <div className="mt-6 flex justify-center">
+            <GoogleOAuthProvider
+              clientId={process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID!}
+            >
+              <GoogleLogin
+                onSuccess={handleGoogleSuccess}
+                onError={() => console.error("❌ Google UI Popup Failed")}
+                theme="outline"
+                size="large"
+                width="100%"
+                text={isLoginMode ? "signin_with" : "signup_with"}
+              />
+            </GoogleOAuthProvider>
+          </div>
         </CardContent>
 
         <CardFooter className="flex flex-col space-y-4 border-t border-zinc-100 pt-6">
@@ -165,7 +210,7 @@ export default function LoginPage() {
               ? "Don't have an account?"
               : "Already have an account?"}{" "}
             <button
-              onClick={toggleMode}
+              onClick={handleModeSwitch}
               disabled={isLoading}
               className="font-semibold text-zinc-900 hover:underline disabled:opacity-50"
             >
