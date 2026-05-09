@@ -13,7 +13,7 @@ export const getUsersForSidebar = async (
       return;
     }
 
-    // 1. Active Chats Nikalo: Wo saari 1-on-1 chats nikalo jisme main hun, aur time ke hisab se sort karo
+    // 1. Active Chats Nikalo: Wo saari 1-on-1 chats nikalo jisme main hun
     const activeConversations = await prisma.conversation.findMany({
       where: {
         isGroup: false,
@@ -22,39 +22,50 @@ export const getUsersForSidebar = async (
         },
       },
       orderBy: {
-        lastMessageAt: "desc", // Sab se latest oopar
+        lastMessageAt: "desc",
       },
       include: {
         participants: {
-          where: { userId: { not: currentUserId } }, // Samne wale ki detail nikalo
+          where: { userId: { not: currentUserId } },
           include: {
             user: {
-              select: { id: true, name: true, email: true, avatarUrl: true },
+              select: {
+                id: true,
+                name: true,
+                email: true,
+                avatarUrl: true,
+                isEmailVerified: true,
+              }, // Verified status bhi mangwa liya check ke liye
             },
           },
         },
       },
     });
 
-    // 2. User list extract karo
+    // 2. User list extract karo (Aur strictly sirf verified users filter out karo)
     const activeUsers = activeConversations
-      .filter((c) => c.participants.length > 0)
+      .filter(
+        (c) =>
+          c.participants.length > 0 &&
+          c.participants[0].user.isEmailVerified === true,
+      ) // 🛡️ THE GUARD: Active list mein bhi check
       .map((c) => c.participants[0].user);
 
     const activeUserIds = activeUsers.map((u) => u.id);
 
-    // 3. Other Users Nikalo: Wo log jinse maine abhi tak baat nahi ki
+    // 3. Other Users Nikalo: THE ROOT CAUSE OF YOUR BUG WAS HERE
     const otherUsers = await prisma.user.findMany({
       where: {
+        isEmailVerified: true, // 🛡️ THE FIX: Sirf verified log aayenge, OTP wale kachre mein rahenge
         id: {
-          notIn: [currentUserId, ...activeUserIds], // Na main khud hun, na wo log jinse chat ho chuki
+          notIn: [currentUserId, ...activeUserIds],
         },
       },
       select: { id: true, name: true, email: true, avatarUrl: true },
-      orderBy: { name: "asc" }, // Inhe naam ke hisab se sort kardo
+      orderBy: { name: "asc" },
     });
 
-    // 4. Combine karo aur bhej do (Active log hamesha top par honge)
+    // 4. Combine karo aur bhej do
     const sortedUsersList = [...activeUsers, ...otherUsers];
 
     res.status(200).json(sortedUsersList);
