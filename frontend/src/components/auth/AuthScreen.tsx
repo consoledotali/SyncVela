@@ -132,10 +132,25 @@ export function AuthScreen({
               />
             </div>
 
+            {/* Password Field with Forgot Password Link */}
             <div className="space-y-2 relative">
               <div className="flex items-center justify-between">
                 <Label htmlFor="password">Password</Label>
+
+                {/* 🛡️ THE FIX: Forgot Password Link (Only in Login Mode) */}
+                {isLoginMode && (
+                  <button
+                    type="button"
+                    onClick={() => router.push("/auth/forgot-password")}
+                    tabIndex={-1} // Taake tab dabane se direct input par jaye, idhar nahi
+                    className="text-xs font-semibold text-zinc-600 hover:text-zinc-900 hover:underline transition-colors disabled:opacity-50"
+                    disabled={isLoading}
+                  >
+                    Forgot password?
+                  </button>
+                )}
               </div>
+
               <div className="relative">
                 <Input
                   id="password"

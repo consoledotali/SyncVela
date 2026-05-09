@@ -6,6 +6,8 @@ import {
   logoutUser,
   verifyOTPHandler,
   googleLoginHandler,
+  forgotPasswordHandler,
+  resetPasswordHandler,
 } from "../controllers/authController";
 
 const router = Router();
@@ -19,6 +21,10 @@ router.post("/google", googleLoginHandler);
 
 // OTP Verify karne ka strict route
 router.post("/verify-otp", verifyOTPHandler);
+
+// Password Reset Routes
+router.post("/forgot-password", forgotPasswordHandler);
+router.post("/reset-password", resetPasswordHandler);
 
 // Security & Session Routes
 router.post("/refresh", refreshAccessToken);

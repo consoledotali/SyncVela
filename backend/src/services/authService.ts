@@ -4,7 +4,7 @@ import prisma from "../config/db";
 import { User } from "@prisma/client";
 import crypto from "crypto";
 import { validateEnterpriseEmail } from "../utils/emailValidator";
-import { sendOtpEmail } from "./emailService";
+import { sendOtpEmail, sendPasswordResetOtpEmail } from "./emailService";
 import { OAuth2Client } from "google-auth-library";
 
 export interface AuthTokens {
@@ -209,4 +209,59 @@ export const logout = async (userId: string): Promise<void> => {
     where: { id: userId },
     data: { refreshToken: null },
   });
+};
+
+export const requestPasswordReset = async (email: string) => {
+  const user = await prisma.user.findUnique({ where: { email } });
+  if (!user) throw new Error("If this email exists, an OTP has been sent."); // Security trick: Don't reveal if email exists
+
+  if (user.provider === "GOOGLE") {
+    throw new Error(
+      "This account uses Google Auth. You cannot reset its password here.",
+    );
+  }
+
+  const otp = crypto.randomInt(100000, 999999).toString();
+  const resetTokenExpiresAt = new Date(Date.now() + 15 * 60 * 1000); // 15 mins
+
+  await prisma.user.update({
+    where: { id: user.id },
+    data: { resetToken: otp, resetTokenExpiresAt },
+  });
+
+  sendPasswordResetOtpEmail(user.email, otp).catch((e) =>
+    console.error("Email failed:", e),
+  );
+
+  return { message: "OTP sent to email" };
+};
+
+export const executePasswordReset = async (
+  email: string,
+  otp: string,
+  newPassword: string,
+) => {
+  const user = await prisma.user.findUnique({ where: { email } });
+
+  if (!user) throw new Error("Invalid request");
+  if (user.resetToken !== otp) throw new Error("Invalid OTP");
+  if (user.resetTokenExpiresAt && new Date() > user.resetTokenExpiresAt) {
+    throw new Error("OTP has expired. Please request a new one.");
+  }
+
+  const salt = await bcrypt.genSalt(10);
+  const hashedPassword = await bcrypt.hash(newPassword, salt);
+
+  await prisma.user.update({
+    where: { id: user.id },
+    data: {
+      password: hashedPassword,
+      resetToken: null,
+      resetTokenExpiresAt: null,
+    },
+  });
+
+  return {
+    message: "Password has been successfully reset. You can now login.",
+  };
 };

@@ -156,3 +156,35 @@ export const logoutUser = async (
     res.status(500).json({ error: "Logout failed" });
   }
 };
+
+export const forgotPasswordHandler = async (
+  req: Request,
+  res: Response,
+): Promise<void> => {
+  try {
+    const { email } = req.body;
+    await authService.requestPasswordReset(email);
+    res
+      .status(200)
+      .json({ message: "If this email exists, an OTP has been sent." });
+  } catch (error: any) {
+    res.status(400).json({ error: error.message });
+  }
+};
+
+export const resetPasswordHandler = async (
+  req: Request,
+  res: Response,
+): Promise<void> => {
+  try {
+    const { email, otp, newPassword } = req.body;
+    const response = await authService.executePasswordReset(
+      email,
+      otp,
+      newPassword,
+    );
+    res.status(200).json(response);
+  } catch (error: any) {
+    res.status(400).json({ error: error.message });
+  }
+};
