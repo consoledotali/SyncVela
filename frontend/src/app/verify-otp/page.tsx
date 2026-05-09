@@ -51,8 +51,10 @@ function VerifyOTPContent() {
 
       if (!res.ok) throw new Error(data.error || "Verification failed");
 
-      // Success: Token Zustand mein save karo
-      useAuthStore.setState({ token: data.accessToken, isAuthenticated: true });
+      const { login } = useAuthStore.getState();
+
+      login(data.user, data.accessToken);
+
       router.push("/");
     } catch (err: any) {
       setError(err.message);

@@ -4,7 +4,7 @@ const resend = new Resend(process.env.RESEND_API_KEY);
 
 export const sendOtpEmail = async (email: string, otp: string) => {
   const { data, error } = await resend.emails.send({
-    from: "SyncVela Security <onboarding@resend.dev>", // Production mein apni verify ki hui domain lagana
+    from: "SyncVela Security <noreply@syncvela.codes>",
     to: email,
     subject: "Your SyncVela Verification Code",
     html: `
@@ -28,7 +28,7 @@ export const sendOtpEmail = async (email: string, otp: string) => {
 
 export const sendPasswordResetOtpEmail = async (email: string, otp: string) => {
   const { data, error } = await resend.emails.send({
-    from: "SyncVela Security <onboarding@resend.dev>",
+    from: "SyncVela Security <noreply@syncvela.codes>",
     to: email,
     subject: "Reset Your SyncVela Password",
     html: `

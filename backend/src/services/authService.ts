@@ -16,7 +16,19 @@ export interface JwtPayload {
   userId: string;
 }
 
-export type SafeUser = Omit<User, "password" | "refreshToken">;
+// 🛡️ SECURITY FIX: Typescript ko batao ke ab in mein se koi bhi sensitive cheez frontend par nahi jayegi
+export type SafeUser = Omit<
+  User,
+  | "password"
+  | "refreshToken"
+  | "resetToken"
+  | "resetTokenExpiresAt"
+  | "verificationToken"
+  | "verificationExpiresAt"
+  | "createdAt"
+  | "updatedAt"
+  | "googleId"
+>;
 
 export interface AuthResponse {
   user: SafeUser;
@@ -25,8 +37,20 @@ export interface AuthResponse {
 
 const googleClient = new OAuth2Client(process.env.GOOGLE_CLIENT_ID);
 
+// 🛡️ SECURITY FIX: Actual logic jo data ko filter karti hai
 const sanitizeUser = (user: User): SafeUser => {
-  const { password, refreshToken, ...safeUser } = user;
+  const {
+    password,
+    refreshToken,
+    resetToken,
+    resetTokenExpiresAt,
+    verificationToken,
+    verificationExpiresAt,
+    createdAt,
+    updatedAt,
+    googleId,
+    ...safeUser
+  } = user;
   return safeUser;
 };
 
@@ -50,7 +74,6 @@ export const generateAndStoreTokens = async (
   return { accessToken, refreshToken };
 };
 
-// 🛡️ MODIFIED: Register strictly generates OTP and returns NO TOKENS yet.
 export const register = async (
   email: string,
   name: string,
@@ -90,7 +113,6 @@ export const register = async (
   };
 };
 
-// 🛡️ NAYA: Verify OTP and dispense tokens
 export const verifyOTP = async (
   email: string,
   otp: string,
@@ -127,7 +149,7 @@ export const login = async (
     throw new Error("Invalid credentials");
   }
 
-  // 🛡️ STRICT GATEKEEPER
+  // Gatekeeper
   if (!user.isEmailVerified) {
     throw new Error("EMAIL_NOT_VERIFIED");
   }
@@ -137,7 +159,6 @@ export const login = async (
 };
 
 export const googleLogin = async (idToken: string): Promise<AuthResponse> => {
-  // 1. Token verify karo Google ke servers se
   const ticket = await googleClient.verifyIdToken({
     idToken,
     audience: process.env.GOOGLE_CLIENT_ID,
@@ -152,19 +173,17 @@ export const googleLogin = async (idToken: string): Promise<AuthResponse> => {
   let user = await prisma.user.findUnique({ where: { email } });
 
   if (user) {
-    // Agar user ne pehle Email/OTP se account banaya tha, toh ab account merge kar do
     if (!user.googleId) {
       user = await prisma.user.update({
         where: { email },
         data: {
           googleId,
-          isEmailVerified: true, // Google accounts pehle se verified hote hain
+          isEmailVerified: true,
           avatarUrl: user.avatarUrl || picture,
         },
       });
     }
   } else {
-    // Naya user seedha Google se register ho raha hai
     user = await prisma.user.create({
       data: {
         email,
@@ -213,7 +232,7 @@ export const logout = async (userId: string): Promise<void> => {
 
 export const requestPasswordReset = async (email: string) => {
   const user = await prisma.user.findUnique({ where: { email } });
-  if (!user) throw new Error("If this email exists, an OTP has been sent."); // Security trick: Don't reveal if email exists
+  if (!user) throw new Error("If this email exists, an OTP has been sent.");
 
   if (user.provider === "GOOGLE") {
     throw new Error(
@@ -222,7 +241,7 @@ export const requestPasswordReset = async (email: string) => {
   }
 
   const otp = crypto.randomInt(100000, 999999).toString();
-  const resetTokenExpiresAt = new Date(Date.now() + 15 * 60 * 1000); // 15 mins
+  const resetTokenExpiresAt = new Date(Date.now() + 15 * 60 * 1000);
 
   await prisma.user.update({
     where: { id: user.id },
