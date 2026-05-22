@@ -6,44 +6,47 @@ import {
 } from "../middlewares/authMiddleware";
 import { handleChatEvents } from "./chatHandler";
 
-// THE PRESENCE REGISTRY (In-Memory)
-// Yeh Set un saare user IDs ko track karega jo is waqt socket se connected hain
 const onlineUsers = new Set<string>();
 
 export const initSocket = (server: HttpServer) => {
   const io = new Server(server, {
-    cors: {
-      origin: "http://localhost:3000",
-      methods: ["GET", "POST"],
-    },
+    cors: { origin: "http://localhost:3000", methods: ["GET", "POST"] },
   });
 
   io.use(socketAuthMiddleware);
 
-  io.on("connection", (socket) => {
+  io.on("connection", async (socket) => {
     const authSocket = socket as AuthenticatedSocket;
     const userId = authSocket.user?.userId;
 
     if (!userId) return;
 
-    console.log(`🟢 User Online: ${userId} (Socket ID: ${socket.id})`);
-
-    // NAYA LOGIC: User ko uske personal ID wale kamre mein lock kar do
     socket.join(userId);
 
-    // 1. User ko online list mein add karo
-    onlineUsers.add(userId);
+    const matchingSockets = await io.in(userId).fetchSockets();
+    if (matchingSockets.length === 1) {
+      console.log(`🟢 User Online: ${userId}`);
+      onlineUsers.add(userId);
+      socket.broadcast.emit("userOnline", userId);
+    }
 
-    // 2. Poori dunya (saare connected clients) ko batao ke ab kon kon online hai
-    io.emit("getOnlineUsers", Array.from(onlineUsers));
+    // 🛡️ THE ARCHITECT FIX: Ab server andha-dhund list nahi bhejega.
+    // Jab frontend tayyar hoga, wo 'requestOnlineUsers' mangega, tab hum denge.
+    socket.on("requestOnlineUsers", () => {
+      socket.emit("getOnlineUsers", Array.from(onlineUsers));
+    });
 
     handleChatEvents(io, authSocket);
 
-    // 3. Jaise hi connection toote, list se nikalo aur sab ko update do
     socket.on("disconnect", () => {
-      console.log(`🔴 User Offline: ${userId}`);
-      onlineUsers.delete(userId);
-      io.emit("getOnlineUsers", Array.from(onlineUsers));
+      setTimeout(async () => {
+        const activeSockets = await io.in(userId).fetchSockets();
+        if (activeSockets.length === 0) {
+          console.log(`🔴 User Offline: ${userId}`);
+          onlineUsers.delete(userId);
+          io.emit("userOffline", userId);
+        }
+      }, 500);
     });
   });
 

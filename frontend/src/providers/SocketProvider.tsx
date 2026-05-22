@@ -49,24 +49,27 @@ export const SocketProvider = ({ children }: { children: React.ReactNode }) => {
       console.log("🟢 Frontend Connected to WebSocket Engine");
       setIsConnected(true);
 
-      const { pendingQueue, removePendingMessage, updateMessageStatus } =
-        useChatStore.getState();
+      // 🛡️ THE RACE CONDITION FIX: Delay the flush by 1 second
+      setTimeout(() => {
+        const { pendingQueue, removePendingMessage, updateMessageStatus } =
+          useChatStore.getState();
 
-      if (pendingQueue.length > 0) {
-        console.log(
-          `🔄 Flushing ${pendingQueue.length} pending messages to server...`,
-        );
-        pendingQueue.forEach((pendingItem) => {
-          socketInstance.emit("sendPrivateMessage", {
-            roomId: pendingItem.roomId,
-            text: pendingItem.message.text,
-            targetUserId: pendingItem.targetUserId,
-            tempId: pendingItem.message.id,
+        if (pendingQueue.length > 0) {
+          console.log(
+            `🔄 Flushing ${pendingQueue.length} pending messages to server...`,
+          );
+          pendingQueue.forEach((pendingItem) => {
+            socketInstance.emit("sendPrivateMessage", {
+              roomId: pendingItem.roomId,
+              text: pendingItem.message.text,
+              targetUserId: pendingItem.targetUserId,
+              tempId: pendingItem.message.id,
+            });
+            removePendingMessage(pendingItem.message.id);
+            updateMessageStatus(pendingItem.message.id, "sent");
           });
-          removePendingMessage(pendingItem.message.id);
-          updateMessageStatus(pendingItem.message.id, "sent");
-        });
-      }
+        }
+      }, 1000);
     });
 
     // 🟡 SILENT TOKEN REFRESH INTERCEPTOR

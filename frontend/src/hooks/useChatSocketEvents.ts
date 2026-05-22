@@ -90,8 +90,10 @@ export const useChatSocketEvents = () => {
 
     const handleTyping = ({ senderId }: { senderId: string }) =>
       chatState().addTypingUser(senderId);
+
     const handleStopTyping = ({ senderId }: { senderId: string }) =>
       chatState().removeTypingUser(senderId);
+
     const handleMessageDelivered = ({
       messageId,
       tempId,
@@ -99,6 +101,7 @@ export const useChatSocketEvents = () => {
       messageId: string;
       tempId?: string;
     }) => chatState().updateMessageStatus(messageId, "delivered", tempId);
+
     const handleMessageAck = ({
       tempId,
       realId,
@@ -106,8 +109,24 @@ export const useChatSocketEvents = () => {
       tempId: string;
       realId: string;
     }) => chatState().updateRealMessageId(tempId, realId);
+
     const handleDisconnect = () => chatState().setOnlineUsers([]);
 
+    // 🛡️ THE PRESENCE FIX: Real-time update handlers
+    const handleUserOnline = (userId: string) => {
+      const currentOnline = chatState().onlineUsers;
+      if (!currentOnline.includes(userId)) {
+        chatState().setOnlineUsers([...currentOnline, userId]);
+      }
+    };
+
+    const handleUserOffline = (userId: string) => {
+      chatState().setOnlineUsers(
+        chatState().onlineUsers.filter((id) => id !== userId),
+      );
+    };
+
+    // Binding the events
     socket.on("roomJoined", handleRoomJoined);
     socket.on("messagesRead", handleMessagesRead);
     socket.on("receiveMessage", handleNewMessage);
@@ -116,10 +135,19 @@ export const useChatSocketEvents = () => {
     socket.on("getOnlineUsers", (userIds: string[]) =>
       chatState().setOnlineUsers(userIds),
     );
+
+    // Applying the new handlers
+    socket.on("userOnline", handleUserOnline);
+    socket.on("userOffline", handleUserOffline);
+
     socket.on("messageDelivered", handleMessageDelivered);
     socket.on("messageSentAck", handleMessageAck);
     socket.on("disconnect", handleDisconnect);
 
+    // 🛡️ THE PRESENCE FIX: Request online users immediately after connecting
+    socket.emit("requestOnlineUsers");
+
+    // Unbinding logic to prevent ghost listeners
     return () => {
       socket.off("roomJoined", handleRoomJoined);
       socket.off("messagesRead", handleMessagesRead);
@@ -127,6 +155,10 @@ export const useChatSocketEvents = () => {
       socket.off("userTyping", handleTyping);
       socket.off("userStoppedTyping", handleStopTyping);
       socket.off("getOnlineUsers");
+
+      socket.off("userOnline", handleUserOnline);
+      socket.off("userOffline", handleUserOffline);
+
       socket.off("messageDelivered", handleMessageDelivered);
       socket.off("messageSentAck", handleMessageAck);
       socket.off("disconnect", handleDisconnect);
