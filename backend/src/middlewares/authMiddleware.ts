@@ -1,49 +1,94 @@
+import { Request, Response, NextFunction } from "express";
 import { Socket } from "socket.io";
-import jwt from "jsonwebtoken";
+import jwt, { TokenExpiredError } from "jsonwebtoken";
 
-// 1. TypeScript Override: Standard Socket ko extend karke apni custom property add ki
-export interface AuthenticatedSocket extends Socket {
-  user?: {
-    userId: string;
-  };
+// ------------------------------------------------------
+// 1. STRICT TYPE DEFINITIONS (Zero 'any' allowed)
+// ------------------------------------------------------
+export interface JwtPayload {
+  userId: string;
 }
 
-// 2. The Middleware Engine
+// Express Request object ko strictly augment kiya (Type Overriding)
+declare global {
+  namespace Express {
+    interface Request {
+      user?: JwtPayload;
+    }
+  }
+}
+
+export interface AuthenticatedSocket extends Socket {
+  user?: JwtPayload;
+}
+
+// ------------------------------------------------------
+// 2. CORE ENGINE: Single Source of Truth
+// ------------------------------------------------------
+// Token verify karne ka logic strictly ek jagah band kar diya
+const verifyAccessToken = (token: string): JwtPayload => {
+  const secret = process.env.JWT_SECRET;
+  if (!secret) {
+    throw new Error("FATAL: JWT_SECRET is missing in environment variables.");
+  }
+  return jwt.verify(token, secret) as JwtPayload;
+};
+
+// ------------------------------------------------------
+// 3. HTTP API GATEKEEPER (Express)
+// ------------------------------------------------------
+export const authMiddleware = (
+  req: Request,
+  res: Response,
+  next: NextFunction,
+): void => {
+  try {
+    const token =
+      req.cookies?.accessToken || req.headers.authorization?.split(" ")[1];
+
+    if (!token) {
+      res.status(401).json({ error: "Access denied. Token missing." });
+      return;
+    }
+
+    // Ab typescript rote ga nahi, kyunke humne Request interface augment kar diya hai
+    req.user = verifyAccessToken(token);
+    next();
+  } catch (error) {
+    // Frontend ko explicit reason dena zaroori hai taake wo Refresh Token hit kar sake
+    if (error instanceof TokenExpiredError) {
+      res.status(401).json({ error: "TOKEN_EXPIRED" });
+    } else {
+      res.status(401).json({ error: "Invalid token." });
+    }
+  }
+};
+
+// ------------------------------------------------------
+// 4. WEBSOCKET GATEKEEPER (Socket.io)
+// ------------------------------------------------------
 export const socketAuthMiddleware = (
   socket: AuthenticatedSocket,
   next: (err?: Error) => void,
 ) => {
-  // Handshake ke time frontend token ko 'auth' object mein bhejega
-  // FALLBACK ARCHITECTURE: Pehle 'auth' object check karo, agar na mile toh 'Headers' mein Bearer token dhoondo
   const token =
     socket.handshake.auth?.token ||
     socket.handshake.headers?.authorization?.split(" ")[1];
 
   if (!token) {
-    console.error(
-      `❌ Socket Connection Rejected: No token provided (Socket ID: ${socket.id})`,
-    );
+    console.error(`❌ Socket Rejected: No token provided (ID: ${socket.id})`);
     return next(new Error("Authentication error: Token missing"));
   }
 
   try {
-    // Token ko apni secret key se verify karna
-    const decoded = jwt.verify(token, process.env.JWT_SECRET as string) as {
-      userId: string;
-    };
-
-    // Agar token valid hai, toh user ki ID is socket session ke sath hamesha ke liye chipka do
-    socket.user = { userId: decoded.userId };
-
+    socket.user = verifyAccessToken(token); // Using the same core engine
     console.log(
-      `✅ Socket Authenticated: User ${decoded.userId} connected (Socket ID: ${socket.id})`,
+      `✅ Socket Authenticated: User ${socket.user.userId} connected`,
     );
-
-    // Connection allow karo
     next();
   } catch (error) {
     console.error(
-      `❌ Socket Connection Rejected: Invalid token (Socket ID: ${socket.id})`,
+      `❌ Socket Rejected: Invalid/Expired token (ID: ${socket.id})`,
     );
     return next(new Error("Authentication error: Invalid or expired token"));
   }

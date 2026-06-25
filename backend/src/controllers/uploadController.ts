@@ -2,7 +2,6 @@ import { Request, Response } from "express";
 import { S3Client, PutObjectCommand } from "@aws-sdk/client-s3";
 import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 
-// S3 Client Initialization with strict types
 const s3Client = new S3Client({
   region: "us-east-1",
   endpoint: `https://${process.env.DO_SPACES_ENDPOINT}`,
@@ -12,6 +11,17 @@ const s3Client = new S3Client({
   },
 });
 
+// 🛡️ SECURITY FIX: The Whitelist
+const ALLOWED_MIME_TYPES = [
+  "image/jpeg",
+  "image/png",
+  "image/webp",
+  "image/gif",
+  "application/pdf",
+];
+
+const MAX_FILE_SIZE = 5 * 1024 * 1024; // 5MB Limit (Optional concept for frontend validation reminder)
+
 export const generatePresignedUrl = async (
   req: Request,
   res: Response,
@@ -20,20 +30,30 @@ export const generatePresignedUrl = async (
     const { filename, contentType } = req.body;
 
     if (!filename || !contentType) {
-      res.status(400).json({ error: "Filename and contentType are required" });
-      return; // Return zaroori hai taake request aage proceed na kare
+      res
+        .status(400)
+        .json({ error: "Filename and contentType are strictly required" });
+      return;
     }
 
-    const uniqueFileKey = `chat-attachments/${Date.now()}-${filename.replace(/\s+/g, "-")}`;
+    // 🛡️ SECURITY FIX: Abort if format is not allowed
+    if (!ALLOWED_MIME_TYPES.includes(contentType)) {
+      res.status(415).json({
+        error: "Unsupported file format. Only Images and PDFs are allowed.",
+      });
+      return;
+    }
+
+    const uniqueFileKey = `chat-attachments/${Date.now()}-${filename.replace(/[^a-zA-Z0-9.-]/g, "")}`; // Sanitized filename
 
     const command = new PutObjectCommand({
       Bucket: process.env.DO_SPACES_BUCKET as string,
       Key: uniqueFileKey,
       ContentType: contentType,
-      ACL: "public-read", // Temporarily public for chat UI rendering
+      ACL: "public-read",
     });
 
-    const uploadUrl = await getSignedUrl(s3Client, command, { expiresIn: 300 });
+    const uploadUrl = await getSignedUrl(s3Client, command, { expiresIn: 120 }); // Reduced to 2 mins for security
 
     res.json({
       uploadUrl,
@@ -41,7 +61,7 @@ export const generatePresignedUrl = async (
       fileKey: uniqueFileKey,
     });
   } catch (error) {
-    console.error("Presigned URL Generation Failed:", error);
+    console.error("❌ Presigned URL Generation Failed:", error);
     res.status(500).json({ error: "Failed to generate upload ticket" });
   }
 };

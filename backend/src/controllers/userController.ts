@@ -1,24 +1,21 @@
-import { Request, Response } from "express";
+import { Response } from "express";
 import prisma from "../config/db";
+import { AuthenticatedRequest } from "./channelController"; // 🛡️ Strict TS Type
 
 export const getUsersForSidebar = async (
-  req: Request,
+  req: AuthenticatedRequest,
   res: Response,
 ): Promise<void> => {
   try {
-    const { currentUserId } = req.query;
+    // 🛡️ SECURITY FIX 1: Frontend ki query par thooko. Token se ID nikalo.
+    const userId = req.user!.userId;
 
-    if (!currentUserId || typeof currentUserId !== "string") {
-      res.status(400).json({ error: "Valid Current User ID is required" });
-      return;
-    }
-
-    // 1. Active Chats Nikalo: Wo saari 1-on-1 chats nikalo jisme main hun
+    // 1. Active Chats: Wo saari 1-on-1 chats jisme current user hai
     const activeConversations = await prisma.conversation.findMany({
       where: {
         isGroup: false,
         participants: {
-          some: { userId: currentUserId },
+          some: { userId: userId },
         },
       },
       orderBy: {
@@ -26,7 +23,7 @@ export const getUsersForSidebar = async (
       },
       include: {
         participants: {
-          where: { userId: { not: currentUserId } },
+          where: { userId: { not: userId } },
           include: {
             user: {
               select: {
@@ -35,37 +32,51 @@ export const getUsersForSidebar = async (
                 email: true,
                 avatarUrl: true,
                 isEmailVerified: true,
-              }, // Verified status bhi mangwa liya check ke liye
+              },
             },
           },
         },
       },
     });
 
-    // 2. User list extract karo (Aur strictly sirf verified users filter out karo)
+    // 2. Extract and Filter Active Users
     const activeUsers = activeConversations
       .filter(
         (c) =>
           c.participants.length > 0 &&
           c.participants[0].user.isEmailVerified === true,
-      ) // 🛡️ THE GUARD: Active list mein bhi check
+      )
       .map((c) => c.participants[0].user);
 
     const activeUserIds = activeUsers.map((u) => u.id);
 
-    // 3. Other Users Nikalo: THE ROOT CAUSE OF YOUR BUG WAS HERE
+    // 🛡️ SECURITY FIX 2: Tenant Isolation (Cross-Workspace Data Leak Prevented)
+    // Pehle pata karo ke yeh user kin workspaces ka hissa hai
+    const myWorkspaces = await prisma.workspaceMember.findMany({
+      where: { userId },
+      select: { workspaceId: true },
+    });
+
+    const myWorkspaceIds = myWorkspaces.map((w) => w.workspaceId);
+
+    // 3. Other Users (Isolated): Sirf un logon ko lao jo mere kisi workspace mein mojood hain
     const otherUsers = await prisma.user.findMany({
       where: {
-        isEmailVerified: true, // 🛡️ THE FIX: Sirf verified log aayenge, OTP wale kachre mein rahenge
+        isEmailVerified: true,
         id: {
-          notIn: [currentUserId, ...activeUserIds],
+          notIn: [userId, ...activeUserIds], // Khud ko aur active chat walon ko exclude karo
+        },
+        workspaces: {
+          some: {
+            workspaceId: { in: myWorkspaceIds }, // 🔒 TENANT LOCK: Sirf shared workspace wale allowed hain
+          },
         },
       },
       select: { id: true, name: true, email: true, avatarUrl: true },
       orderBy: { name: "asc" },
     });
 
-    // 4. Combine karo aur bhej do
+    // 4. Combine and send
     const sortedUsersList = [...activeUsers, ...otherUsers];
 
     res.status(200).json(sortedUsersList);

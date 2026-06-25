@@ -1,5 +1,6 @@
 import { Request, Response } from "express";
 import * as authService from "../services/authService";
+import jwt from "jsonwebtoken";
 
 const setRefreshTokenCookie = (res: Response, token: string): void => {
   res.cookie("refreshToken", token, {
@@ -143,7 +144,6 @@ export const logoutUser = async (
     const refreshToken = req.cookies?.refreshToken as string | undefined;
 
     if (refreshToken) {
-      const jwt = require("jsonwebtoken");
       const decoded = jwt.decode(refreshToken) as authService.JwtPayload | null;
       if (decoded?.userId) {
         await authService.logout(decoded.userId);

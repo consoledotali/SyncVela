@@ -3,10 +3,60 @@ import { AuthenticatedSocket } from "../middlewares/authMiddleware";
 import prisma from "../config/db";
 
 export const handleChatEvents = (io: Server, socket: AuthenticatedSocket) => {
-  const userId = socket.user?.userId;
+  // TS knows user exists because of authMiddleware
+  const userId = socket.user!.userId;
 
-  // 1. Room Creation & Joining
-  socket.on("joinPrivateChat", async (targetUserId) => {
+  // ==========================================
+  // 🟢 PART 1: WORKSPACE CHANNELS (SLACK ARCHITECTURE)
+  // ==========================================
+
+  socket.on("join_channel", (channelId: string) => {
+    socket.join(`channel_${channelId}`); // Namespacing to avoid collisions with private rooms
+    console.log(`🚪 [CHANNEL] User ${userId} joined: ${channelId}`);
+  });
+
+  socket.on("leave_channel", (channelId: string) => {
+    socket.leave(`channel_${channelId}`);
+    console.log(`👋 [CHANNEL] User ${userId} left: ${channelId}`);
+  });
+
+  socket.on(
+    "send_channel_message",
+    async (
+      payload: { channelId: string; content?: string; tempId?: string },
+      callback,
+    ) => {
+      try {
+        const { channelId, content, tempId } = payload;
+        if (!channelId || !content?.trim()) return;
+
+        const message = await prisma.message.create({
+          data: {
+            content: content.trim(),
+            channelId,
+            senderId: userId,
+          },
+          include: {
+            sender: { select: { id: true, name: true, avatarUrl: true } },
+          },
+        });
+
+        // Broadcast to specific channel room
+        io.to(`channel_${channelId}`).emit("receive_channel_message", message);
+
+        if (callback) callback({ status: "ok", realId: message.id, tempId });
+      } catch (error) {
+        console.error("❌ [CHANNEL] Message Error:", error);
+        if (callback) callback({ error: "Failed to send message" });
+      }
+    },
+  );
+
+  // ==========================================
+  // 🔵 PART 2: PRIVATE DIRECT MESSAGES (WHATSAPP ARCHITECTURE)
+  // ==========================================
+
+  socket.on("joinPrivateChat", async (targetUserId: string) => {
     try {
       let conversation = await prisma.conversation.findFirst({
         where: {
@@ -23,22 +73,19 @@ export const handleChatEvents = (io: Server, socket: AuthenticatedSocket) => {
           data: {
             isGroup: false,
             participants: {
-              create: [{ userId: userId as string }, { userId: targetUserId }],
+              create: [{ userId }, { userId: targetUserId }],
             },
           },
         });
-        console.log(`🏗️ Naya Private Room banaya: ${conversation.id}`);
       }
 
-      socket.join(conversation.id);
+      socket.join(`dm_${conversation.id}`); // Namespacing
       socket.emit("roomJoined", conversation.id);
-      console.log(`🚪 User [${userId}] joined Room [${conversation.id}]`);
     } catch (error) {
-      console.error("❌ Room join fail hua:", error);
+      console.error("❌ Private Room join fail hua:", error);
     }
   });
 
-  // 2. Sending Messages
   socket.on(
     "sendPrivateMessage",
     async (payload: {
@@ -53,16 +100,13 @@ export const handleChatEvents = (io: Server, socket: AuthenticatedSocket) => {
         const hasAttachment =
           payload.attachmentUrl && payload.attachmentUrl.trim() !== "";
 
-        if (!hasText && !hasAttachment) {
-          console.log(`⚠️ Empty message blocked from User [${userId}]`);
-          return;
-        }
+        if (!hasText && !hasAttachment) return;
 
         const savedMessage = await prisma.message.create({
           data: {
             content: hasText ? payload.text?.trim() : null,
             attachmentUrl: hasAttachment ? payload.attachmentUrl : null,
-            senderId: userId as string,
+            senderId: userId,
             conversationId: payload.roomId,
           },
         });
@@ -81,7 +125,7 @@ export const handleChatEvents = (io: Server, socket: AuthenticatedSocket) => {
           tempId: payload.tempId,
         };
 
-        // 🛡️ THE GLOBAL ROUTING FIX: Direct to user's personal channel (targets all active tabs)
+        // Personal User Room Routing
         io.to(payload.targetUserId).emit("receiveMessage", broadcastPayload);
 
         if (payload.tempId) {
@@ -91,49 +135,37 @@ export const handleChatEvents = (io: Server, socket: AuthenticatedSocket) => {
           });
         }
       } catch (error) {
-        console.error("❌ Message fail hua:", error);
+        console.error("❌ Private Message fail hua:", error);
       }
     },
   );
 
-  // 4. Mark Room as Read (Watermark Logic)
+  // ==========================================
+  // 🟡 PART 3: READ RECEIPTS & TYPING INDICATORS
+  // ==========================================
+
   socket.on(
     "markAsRead",
     async (payload: { roomId: string; targetUserId: string }) => {
       try {
-        if (!payload.roomId) return;
-
         await prisma.participant.update({
           where: {
-            userId_conversationId: {
-              userId: userId as string,
-              conversationId: payload.roomId,
-            },
+            userId_conversationId: { userId, conversationId: payload.roomId },
           },
-          data: {
-            lastReadAt: new Date(),
-          },
+          data: { lastReadAt: new Date() },
         });
-
-        // 🛡️ THE GLOBAL ROUTING FIX
         io.to(payload.targetUserId).emit("messagesRead", {
           roomId: payload.roomId,
         });
-
-        console.log(
-          `👀 User [${userId}] marked Room [${payload.roomId}] as read.`,
-        );
       } catch (error) {
         console.error("❌ Mark as read failed:", error);
       }
     },
   );
 
-  // 5. NAYA: Mark as Delivered
   socket.on(
     "markAsDelivered",
     (payload: { messageId: string; senderId: string; tempId?: string }) => {
-      // 🛡️ THE GLOBAL ROUTING FIX
       io.to(payload.senderId).emit("messageDelivered", {
         messageId: payload.messageId,
         tempId: payload.tempId,

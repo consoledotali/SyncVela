@@ -9,6 +9,8 @@ import authRoutes from "./routes/authRoutes";
 import chatRoutes from "./routes/chatRoutes";
 import userRoutes from "./routes/userRoutes";
 import uploadRoutes from "./routes/uploadRoutes";
+import workspaceRoutes from "./routes/workspaceRoutes";
+import channelRoutes from "./routes/channelRoutes";
 
 // Socket Engine Import
 import { initSocket } from "./sockets";
@@ -36,6 +38,8 @@ app.use("/api/auth", authRoutes);
 app.use("/api/chat", chatRoutes);
 app.use("/api/users", userRoutes);
 app.use("/api/upload", uploadRoutes);
+app.use("/api/workspaces", workspaceRoutes);
+app.use("/api/channels", channelRoutes);
 
 // Health Check
 app.get("/api/health", (req, res) => {
