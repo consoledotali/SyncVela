@@ -1,33 +1,63 @@
 import { useState } from "react";
 import { useSocket } from "@/src/providers/SocketProvider";
-import { useChatStore, Message } from "@/src/store/chatStore";
+import { useChatStore, Message } from "@/src/store/chat";
 import { useAuthStore } from "@/src/store/authStore";
 
 export const useMessageSender = () => {
   const { socket, isConnected } = useSocket();
-  const { user } = useAuthStore();
-  const { activeRoomId, selectedUser, addMessage, addPendingMessage, moveUserToTop } = useChatStore();
-  
-  // NAYI STATE: Button Lock ke liye
+  const { user, token } = useAuthStore();
+
+  const {
+    activeRoomId,
+    activeChannelId,
+    selectedUser,
+    addMessage,
+    addPendingMessage,
+    moveUserToTop,
+  } = useChatStore() as any;
+
   const [isUploading, setIsUploading] = useState(false);
 
-  const sendMessage = async (inputText: string, selectedFile: File | null, clearInput: () => void) => {
-    if ((!inputText.trim() && !selectedFile) || !activeRoomId || !selectedUser) return;
-    
-    // Agar pehle se upload chal raha hai toh block karo (Double Click Fix)
+  const sendMessage = async (
+    inputText: string,
+    selectedFile: File | null,
+    clearInput: () => void,
+  ) => {
+    const isChannelContext = !!activeChannelId;
+    const isDMContext = !!activeRoomId && !!selectedUser;
+
+    if (
+      (!inputText.trim() && !selectedFile) ||
+      (!isChannelContext && !isDMContext)
+    )
+      return;
     if (isUploading) return;
 
     const messageId = Math.random().toString(36).substring(7);
     let finalAttachmentUrl = null;
 
+    // ==========================================
+    // 🛡️ SECURE S3 UPLOAD LOGIC
+    // ==========================================
     if (selectedFile) {
       setIsUploading(true);
       try {
-        const ticketRes = await fetch("http://localhost:5000/api/upload/presign", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ filename: selectedFile.name, contentType: selectedFile.type }),
-        });
+        if (!token) throw new Error("Authentication missing for upload");
+
+        const ticketRes = await fetch(
+          "http://localhost:5000/api/upload/presign",
+          {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              Authorization: `Bearer ${token}`,
+            },
+            body: JSON.stringify({
+              filename: selectedFile.name,
+              contentType: selectedFile.type,
+            }),
+          },
+        );
 
         if (!ticketRes.ok) throw new Error("Failed to get upload ticket");
         const { uploadUrl, finalFileUrl } = await ticketRes.json();
@@ -41,25 +71,20 @@ export const useMessageSender = () => {
           body: selectedFile,
         });
 
-        if (!uploadRes.ok) throw new Error("Failed to upload file");
+        if (!uploadRes.ok) throw new Error("Failed to upload file to S3");
         finalAttachmentUrl = finalFileUrl;
       } catch (error) {
         console.error("Upload Error:", error);
-        alert("File upload failed.");
+        alert("File upload failed. Check format or connection.");
         setIsUploading(false);
-        return; 
+        return;
       }
       setIsUploading(false);
     }
 
-    const payload = {
-      roomId: activeRoomId,
-      text: inputText,
-      targetUserId: selectedUser.id,
-      tempId: messageId,
-      attachmentUrl: finalAttachmentUrl,
-    };
-
+    // ==========================================
+    // 🚀 UNIFIED SENDING LOGIC
+    // ==========================================
     const msgObj: Message = {
       id: messageId,
       text: inputText,
@@ -67,16 +92,41 @@ export const useMessageSender = () => {
       createdAt: new Date().toISOString(),
       status: isConnected ? "sent" : "pending",
       attachmentUrl: finalAttachmentUrl,
+      tempId: messageId,
+      // 🛡️ THE IDENTITY FIX: UI ab ghalti se 'You' render nahi karega
+      sender: {
+        id: user?.id || "",
+        name: user?.name || "Unknown",
+        avatarUrl: null,
+      },
     };
 
     if (isConnected && socket) {
       addMessage(msgObj);
-      socket.emit("sendPrivateMessage", payload);
+
+      if (isChannelContext) {
+        socket.emit("send_channel_message", {
+          channelId: activeChannelId,
+          content: inputText,
+          attachmentUrl: finalAttachmentUrl,
+          tempId: messageId,
+        });
+      } else if (isDMContext) {
+        socket.emit("sendPrivateMessage", {
+          roomId: activeRoomId,
+          text: inputText,
+          targetUserId: selectedUser.id,
+          tempId: messageId,
+          attachmentUrl: finalAttachmentUrl,
+        });
+        moveUserToTop(selectedUser.id);
+      }
     } else {
-      addPendingMessage(activeRoomId, selectedUser.id, msgObj);
+      if (isDMContext) {
+        addPendingMessage(activeRoomId, selectedUser.id, msgObj);
+      }
     }
 
-    moveUserToTop(selectedUser.id);
     clearInput();
   };
 

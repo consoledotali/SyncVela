@@ -1,21 +1,25 @@
 import { useEffect } from "react";
 import { useAuthStore } from "@/src/store/authStore";
-import { useChatStore } from "@/src/store/chatStore";
+import { useChatStore } from "@/src/store/chat";
 
 export const useChatInit = () => {
-  const { isAuthenticated, user } = useAuthStore();
+  const { isAuthenticated, token } = useAuthStore(); // 🛡️ user.id ki jagah token nikalo
   const { setUsers } = useChatStore();
 
   useEffect(() => {
-    if (!isAuthenticated || !user?.id) return;
+    if (!isAuthenticated || !token) return;
 
     const fetchInitialData = async () => {
       try {
+        // 🛡️ SECURITY FIX: Do not pass ID in URL. Pass token in Headers.
+        const headers = {
+          Authorization: `Bearer ${token}`,
+          "Content-Type": "application/json",
+        };
+
         const [usersRes, unreadRes] = await Promise.all([
-          fetch(`http://localhost:5000/api/users?currentUserId=${user.id}`),
-          fetch(
-            `http://localhost:5000/api/chat/unread-counts?userId=${user.id}`,
-          ),
+          fetch(`http://localhost:5000/api/users`, { headers }), // URL cleaned
+          fetch(`http://localhost:5000/api/chat/unread-counts`, { headers }), // URL cleaned
         ]);
 
         if (usersRes.ok) setUsers(await usersRes.json());
@@ -29,5 +33,5 @@ export const useChatInit = () => {
     };
 
     fetchInitialData();
-  }, [isAuthenticated, user?.id, setUsers]);
+  }, [isAuthenticated, token, setUsers]);
 };

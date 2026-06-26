@@ -11,6 +11,7 @@ import userRoutes from "./routes/userRoutes";
 import uploadRoutes from "./routes/uploadRoutes";
 import workspaceRoutes from "./routes/workspaceRoutes";
 import channelRoutes from "./routes/channelRoutes";
+import messageRoutes from "./routes/messageRoutes";
 
 // Socket Engine Import
 import { initSocket } from "./sockets";
@@ -28,6 +29,8 @@ app.use(
   cors({
     origin: process.env.CLIENT_URL || "http://localhost:3000",
     credentials: true,
+    allowedHeaders: ["Content-Type", "Authorization"], // 🛡️ THE FIX: Strictly allow tokens
+    methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
   }),
 );
 app.use(cookieParser());
@@ -40,6 +43,7 @@ app.use("/api/users", userRoutes);
 app.use("/api/upload", uploadRoutes);
 app.use("/api/workspaces", workspaceRoutes);
 app.use("/api/channels", channelRoutes);
+app.use("/api/messages", messageRoutes);
 
 // Health Check
 app.get("/api/health", (req, res) => {

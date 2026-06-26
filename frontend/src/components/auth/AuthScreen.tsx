@@ -27,8 +27,23 @@ export function AuthScreen({
   const router = useRouter();
   const isInitiallyLogin = defaultMode === "login";
 
+  // ==========================================
+  // 🚀 THE FIX: SMART REDIRECT ENGINE
+  // ==========================================
   useEffect(() => {
-    if (isAuthenticated) router.push("/");
+    if (isAuthenticated) {
+      // Check karo ke kya user kisi invite link se aaya tha?
+      const pendingInviteUrl = sessionStorage.getItem("redirectAfterLogin");
+
+      if (pendingInviteUrl) {
+        // Invite link mojood hai. Pehle memory saaf karo, phir wapas invite page par bhejo
+        sessionStorage.removeItem("redirectAfterLogin");
+        router.push(pendingInviteUrl);
+      } else {
+        // Normal login hai, seedha dashboard/chat par bhejo
+        router.push("/");
+      }
+    }
   }, [isAuthenticated, router]);
 
   const {
@@ -59,8 +74,8 @@ export function AuthScreen({
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Google Auth Failed");
 
+      // 🛡️ Yahan se manual router.push hata diya hai taake upar wala useEffect control sambhal le
       login(data.user, data.accessToken);
-      router.push("/");
     } catch (err: any) {
       console.error("❌ Google Login Failed:", err.message);
     }
@@ -221,7 +236,6 @@ export function AuthScreen({
                   width="100%"
                   text={isLoginMode ? "signin_with" : "signup_with"}
                   shape="rectangular"
-                  // 🛡️ NAYA: logo_alignment center taake button visually balanced lagay
                   logo_alignment="center"
                 />
               </GoogleOAuthProvider>

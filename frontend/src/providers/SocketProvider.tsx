@@ -2,9 +2,9 @@
 
 import React, { createContext, useContext, useEffect, useState } from "react";
 import { io, Socket } from "socket.io-client";
-import { useRouter } from "next/navigation"; // 🛡️ NAYA IMPORT
+import { useRouter } from "next/navigation";
 import { useAuthStore } from "@/src/store/authStore";
-import { useChatStore } from "@/src/store/chatStore";
+import { useChatStore } from "@/src/store/chat";
 
 interface SocketContextType {
   socket: Socket | null;
