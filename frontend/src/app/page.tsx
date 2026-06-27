@@ -4,7 +4,7 @@ import React, { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { useAuthStore } from "@/src/store/authStore";
 import Sidebar from "@/src/components/chat/sidebar/Sidebar";
-import ChatArea from "@/src/components/chat/ChatArea";
+import ChatArea from "@/src/components/chat/chat-area/ChatArea";
 
 // 🛡️ THE ORCHESTRATOR HOOKS (Complete Pipeline)
 import { useChatInit } from "@/src/hooks/useChatInit"; // For Users/DMs

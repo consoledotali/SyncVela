@@ -3,7 +3,6 @@ import { AuthenticatedSocket } from "../middlewares/authMiddleware";
 import prisma from "../config/db";
 
 export const handleChatEvents = (io: Server, socket: AuthenticatedSocket) => {
-  // TS knows user exists because of authMiddleware
   const userId = socket.user!.userId;
 
   // ==========================================
@@ -11,7 +10,7 @@ export const handleChatEvents = (io: Server, socket: AuthenticatedSocket) => {
   // ==========================================
 
   socket.on("join_channel", (channelId: string) => {
-    socket.join(`channel_${channelId}`); // Namespacing to avoid collisions with private rooms
+    socket.join(`channel_${channelId}`);
     console.log(`🚪 [CHANNEL] User ${userId} joined: ${channelId}`);
   });
 
@@ -23,16 +22,26 @@ export const handleChatEvents = (io: Server, socket: AuthenticatedSocket) => {
   socket.on(
     "send_channel_message",
     async (
-      payload: { channelId: string; content?: string; tempId?: string },
+      payload: {
+        channelId: string;
+        content?: string;
+        attachmentUrl?: string;
+        tempId?: string;
+      },
       callback,
     ) => {
       try {
-        const { channelId, content, tempId } = payload;
-        if (!channelId || !content?.trim()) return;
+        const { channelId, content, attachmentUrl, tempId } = payload;
+
+        const hasText = content && content.trim() !== "";
+        const hasAttachment = attachmentUrl && attachmentUrl.trim() !== "";
+
+        if (!channelId || (!hasText && !hasAttachment)) return;
 
         const message = await prisma.message.create({
           data: {
-            content: content.trim(),
+            content: hasText ? content.trim() : null,
+            attachmentUrl: hasAttachment ? attachmentUrl : null,
             channelId,
             senderId: userId,
           },
@@ -41,12 +50,21 @@ export const handleChatEvents = (io: Server, socket: AuthenticatedSocket) => {
           },
         });
 
+        // 🛡️ THE OPTIMISTIC UI FIX: Return the tempId to the frontend
+        const broadcastPayload = {
+          ...message,
+          tempId: tempId,
+        };
+
         // Broadcast to specific channel room
-        io.to(`channel_${channelId}`).emit("receive_channel_message", message);
+        io.to(`channel_${channelId}`).emit(
+          "receive_channel_message",
+          broadcastPayload,
+        );
 
         if (callback) callback({ status: "ok", realId: message.id, tempId });
       } catch (error) {
-        console.error("❌ [CHANNEL] Message Error:", error);
+        console.error("❌ [CHANNEL] Message Routing Failed:", error);
         if (callback) callback({ error: "Failed to send message" });
       }
     },
@@ -79,10 +97,10 @@ export const handleChatEvents = (io: Server, socket: AuthenticatedSocket) => {
         });
       }
 
-      socket.join(`dm_${conversation.id}`); // Namespacing
+      socket.join(`dm_${conversation.id}`);
       socket.emit("roomJoined", conversation.id);
     } catch (error) {
-      console.error("❌ Private Room join fail hua:", error);
+      console.error("❌ [DM] Private Room Join Failed:", error);
     }
   });
 
@@ -125,7 +143,6 @@ export const handleChatEvents = (io: Server, socket: AuthenticatedSocket) => {
           tempId: payload.tempId,
         };
 
-        // Personal User Room Routing
         io.to(payload.targetUserId).emit("receiveMessage", broadcastPayload);
 
         if (payload.tempId) {
@@ -135,7 +152,7 @@ export const handleChatEvents = (io: Server, socket: AuthenticatedSocket) => {
           });
         }
       } catch (error) {
-        console.error("❌ Private Message fail hua:", error);
+        console.error("❌ [DM] Message Routing Failed:", error);
       }
     },
   );

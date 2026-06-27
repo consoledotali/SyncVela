@@ -1,6 +1,6 @@
 import { useEffect } from "react";
 import { useSocket } from "@/src/providers/SocketProvider";
-import { useChatStore, Message } from "@/src/store/chat"; // 🛡️ NAYA PATH: Modular store import
+import { useChatStore, Message } from "@/src/store/chat";
 import { useAuthStore } from "@/src/store/authStore";
 
 export const useChatSocketEvents = () => {
@@ -95,7 +95,7 @@ export const useChatSocketEvents = () => {
     };
 
     // ==========================================
-    // 🟢 CHANNEL HANDLERS
+    // 🟢 CHANNEL HANDLERS (THE DEDUPLICATION ENGINE)
     // ==========================================
     const handleNewChannelMessage = (message: any) => {
       const currentChannelId = chatState().activeChannelId;
@@ -103,22 +103,21 @@ export const useChatSocketEvents = () => {
       if (currentChannelId === message.channelId) {
         const existingMessages = chatState().messages;
 
+        // 🛡️ Detects if the incoming message is an echo of our own optimistic message
         const isDuplicate = existingMessages.some(
           (m) =>
             m.id === message.id ||
-            (message.tempId && m.tempId === message.tempId) ||
+            (message.tempId &&
+              (m.tempId === message.tempId || m.id === message.tempId)) ||
             (m.senderId === message.senderId &&
-              m.text === message.content &&
+              (m.text === message.content ||
+                (!message.content && m.text === " ")) &&
               new Date().getTime() - new Date(m.createdAt).getTime() < 3000),
         );
 
         if (isDuplicate) {
-          const optimisticMsg = existingMessages.find(
-            (m) =>
-              m.senderId === message.senderId && m.text === message.content,
-          );
-          if (optimisticMsg && optimisticMsg.id !== message.id) {
-            chatState().updateRealMessageId(optimisticMsg.id, message.id);
+          if (message.tempId) {
+            chatState().updateRealMessageId(message.tempId, message.id);
           }
           return;
         }
@@ -132,7 +131,6 @@ export const useChatSocketEvents = () => {
           sender: message.sender,
         } as any);
       } else {
-        // 🛡️ THE NOTIFICATION TRIGGER IS NOW INJECTED
         chatState().incrementChannelUnread(message.channelId);
       }
     };

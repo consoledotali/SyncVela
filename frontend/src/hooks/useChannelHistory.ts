@@ -1,10 +1,10 @@
 import { useEffect } from "react";
 import { useAuthStore } from "@/src/store/authStore";
-import { useChatStore } from "@/src/store/chat";
+import { useChatStore } from "@/src/store/chat"; // 🛡️ Modular path ensure kiya hai
 
 export const useChannelHistory = () => {
   const { token } = useAuthStore();
-  const { activeChannelId, setMessages } = useChatStore();
+  const { activeChannelId, setMessages, setPagination } = useChatStore();
 
   useEffect(() => {
     if (!activeChannelId || !token) return;
@@ -19,9 +19,11 @@ export const useChannelHistory = () => {
         );
 
         if (response.ok) {
-          const rawMessages = await response.json();
+          const data = await response.json();
 
-          // 🛡️ THE DATA MAPPING FIX: Backend uses 'content', UI expects 'text'
+          // 🛡️ THE DATA PIPELINE FIX: Data object ke andar se 'messages' array nikalo
+          const rawMessages = data.messages || [];
+
           const formattedMessages = rawMessages.map((msg: any) => ({
             id: msg.id,
             text: msg.content,
@@ -32,6 +34,8 @@ export const useChannelHistory = () => {
           }));
 
           setMessages(formattedMessages);
+
+          setPagination(data.hasMore || false, data.nextCursor || null);
         }
       } catch (error) {
         console.error("❌ Failed to load channel history", error);
@@ -39,5 +43,5 @@ export const useChannelHistory = () => {
     };
 
     fetchHistory();
-  }, [activeChannelId, token, setMessages]);
+  }, [activeChannelId, token, setMessages, setPagination]);
 };

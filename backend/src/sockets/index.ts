@@ -1,9 +1,6 @@
 import { Server } from "socket.io";
 import { Server as HttpServer } from "http";
-import {
-  socketAuthMiddleware,
-  AuthenticatedSocket,
-} from "../middlewares/authMiddleware";
+import { socketAuthMiddleware, AuthenticatedSocket } from "../middlewares/authMiddleware";
 import { handleChatEvents } from "./chatHandler";
 
 const onlineUsers = new Set<string>();
@@ -30,8 +27,7 @@ export const initSocket = (server: HttpServer) => {
       socket.broadcast.emit("userOnline", userId);
     }
 
-    // 🛡️ THE ARCHITECT FIX: Ab server andha-dhund list nahi bhejega.
-    // Jab frontend tayyar hoga, wo 'requestOnlineUsers' mangega, tab hum denge.
+    // 🛡️ SECURITY FIX: Request engine mapping
     socket.on("requestOnlineUsers", () => {
       socket.emit("getOnlineUsers", Array.from(onlineUsers));
     });

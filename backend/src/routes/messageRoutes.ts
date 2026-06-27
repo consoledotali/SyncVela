@@ -7,7 +7,7 @@ import { authMiddleware } from "../middlewares/authMiddleware";
 
 const router = Router();
 
-// 🛡️ SECURITY: Protect all history endpoints
+// 🛡️ GATEKEEPER: Protect endpoints. Session leak prevention.
 router.use(authMiddleware);
 
 router.get("/channel/:channelId", getChannelMessages);
