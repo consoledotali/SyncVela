@@ -74,7 +74,7 @@ export const MessageList = React.forwardRef(
         })}
 
         {isCurrentlyTyping && selectedUser && (
-          <div className="text-[13px] font-medium text-muted-foreground pl-14 pt-2">
+          <div className="text-[13px] font-medium text-muted-foreground pl-14 pt-2 animate-pulse">
             {selectedUser.name.split(" ")[0]} is typing...
           </div>
         )}
