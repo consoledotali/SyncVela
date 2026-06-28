@@ -1,6 +1,6 @@
 import { Response } from "express";
 import prisma from "../config/db";
-import { AuthenticatedRequest } from "./channelController"; // Utilizing your strict types
+import { AuthenticatedRequest } from "./channelController";
 
 // 1. GET CHANNEL MESSAGES (With Secure Cursor Pagination)
 export const getChannelMessages = async (
@@ -10,14 +10,14 @@ export const getChannelMessages = async (
   try {
     const channelId = req.params.channelId as string;
     const cursor = req.query.cursor as string | undefined;
-    const LIMIT = 50; // Standard enterprise viewport size
+    const LIMIT = 50;
 
     const messages = await prisma.message.findMany({
       where: { channelId },
       take: LIMIT,
-      skip: cursor ? 1 : 0, // Skip the anchor point itself if cursor exists
+      skip: cursor ? 1 : 0,
       cursor: cursor ? { id: cursor } : undefined,
-      orderBy: { createdAt: "desc" }, // Fetch latest to oldest for cursor scanning
+      orderBy: { createdAt: "desc" },
       include: {
         sender: {
           select: { id: true, name: true, avatarUrl: true },
@@ -26,11 +26,10 @@ export const getChannelMessages = async (
     });
 
     const hasMore = messages.length === LIMIT;
-    // Next cursor will be the ID of the oldest message in this current batch
     const nextCursor = hasMore ? messages[messages.length - 1].id : null;
 
     res.status(200).json({
-      messages: messages.reverse(), // Reverse back for natural chronological UI reading
+      messages: messages.reverse(),
       hasMore,
       nextCursor,
     });
@@ -40,7 +39,7 @@ export const getChannelMessages = async (
   }
 };
 
-// 2. GET DIRECT MESSAGES (With Secure Cursor Pagination)
+// 2. GET DIRECT MESSAGES (With Secure Cursor Pagination & Read State)
 export const getDirectMessages = async (
   req: AuthenticatedRequest,
   res: Response,
@@ -63,6 +62,12 @@ export const getDirectMessages = async (
       },
     });
 
+    // 🛡️ THE ARCHITECTURE FIX: Fetch participant read states
+    const participants = await prisma.participant.findMany({
+      where: { conversationId },
+      select: { userId: true, lastReadAt: true },
+    });
+
     const hasMore = messages.length === LIMIT;
     const nextCursor = hasMore ? messages[messages.length - 1].id : null;
 
@@ -70,6 +75,7 @@ export const getDirectMessages = async (
       messages: messages.reverse(),
       hasMore,
       nextCursor,
+      participants, // 🟢 YEH MISSING THA! Iske bina Blue Ticks nahi chalenge.
     });
   } catch (error) {
     console.error("❌ [BACKEND] Fetching DM History Failed:", error);

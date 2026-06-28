@@ -33,7 +33,7 @@ export const useChatSocketEvents = () => {
           `http://localhost:5000/api/messages/dm/${roomId}`,
           {
             headers: { Authorization: `Bearer ${token}` },
-          },
+          }
         );
 
         if (response.ok) {
@@ -46,16 +46,17 @@ export const useChatSocketEvents = () => {
               createdAt: msg.createdAt,
               attachmentUrl: msg.attachmentUrl,
               sender: msg.sender,
+              status: msg.status || "delivered", // Historical messages fallback
             })) || [];
 
           chatState().setMessages(formattedHistory);
 
           if (currentSelectedUser) {
             const targetParticipant = data.participants?.find(
-              (p: any) => p.userId === currentSelectedUser.id,
+              (p: any) => p.userId === currentSelectedUser.id
             );
             chatState().setTargetLastReadAt(
-              targetParticipant?.lastReadAt || null,
+              targetParticipant?.lastReadAt || null
             );
           }
           chatState().setPagination(data.hasMore, data.nextCursor);
@@ -95,7 +96,7 @@ export const useChatSocketEvents = () => {
     };
 
     // ==========================================
-    // 🟢 CHANNEL HANDLERS (THE DEDUPLICATION ENGINE)
+    // 🟢 CHANNEL HANDLERS
     // ==========================================
     const handleNewChannelMessage = (message: any) => {
       const currentChannelId = chatState().activeChannelId;
@@ -103,16 +104,14 @@ export const useChatSocketEvents = () => {
       if (currentChannelId === message.channelId) {
         const existingMessages = chatState().messages;
 
-        // 🛡️ Detects if the incoming message is an echo of our own optimistic message
+        // The Deduplication Engine
         const isDuplicate = existingMessages.some(
           (m) =>
             m.id === message.id ||
-            (message.tempId &&
-              (m.tempId === message.tempId || m.id === message.tempId)) ||
+            (message.tempId && (m.tempId === message.tempId || m.id === message.tempId)) ||
             (m.senderId === message.senderId &&
-              (m.text === message.content ||
-                (!message.content && m.text === " ")) &&
-              new Date().getTime() - new Date(m.createdAt).getTime() < 3000),
+              (m.text === message.content || (!message.content && m.text === " ")) &&
+              new Date().getTime() - new Date(m.createdAt).getTime() < 3000)
         );
 
         if (isDuplicate) {
@@ -129,10 +128,18 @@ export const useChatSocketEvents = () => {
           createdAt: message.createdAt,
           attachmentUrl: message.attachmentUrl,
           sender: message.sender,
+          status: "sent",
         } as any);
       } else {
         chatState().incrementChannelUnread(message.channelId);
       }
+    };
+
+    // ==========================================
+    // 🔴 DELETION HANDLER
+    // ==========================================
+    const handleMessageDeleted = ({ messageId }: { messageId: string }) => {
+      chatState().deleteMessage(messageId);
     };
 
     // ==========================================
@@ -146,33 +153,41 @@ export const useChatSocketEvents = () => {
 
     const handleTyping = ({ senderId }: { senderId: string }) =>
       chatState().addTypingUser(senderId);
+    
     const handleStopTyping = ({ senderId }: { senderId: string }) =>
       chatState().removeTypingUser(senderId);
-    const handleMessageDelivered = ({
-      messageId,
-      tempId,
-    }: {
-      messageId: string;
-      tempId?: string;
-    }) => chatState().updateMessageStatus(messageId, "delivered", tempId);
-    const handleMessageAck = ({
-      tempId,
-      realId,
-    }: {
-      tempId: string;
-      realId: string;
-    }) => chatState().updateRealMessageId(tempId, realId);
+    
+    const handleMessageDelivered = ({ messageId, tempId }: { messageId: string; tempId?: string }) =>
+      chatState().updateMessageStatus(messageId, "delivered", tempId);
+    
+    const handleMessageAck = ({ tempId, realId }: { tempId: string; realId: string }) =>
+      chatState().updateRealMessageId(tempId, realId);
+    
     const handleDisconnect = () => chatState().setOnlineUsers([]);
 
     const handleUserOnline = (userId: string) => {
-      const currentOnline = chatState().onlineUsers;
-      if (!currentOnline.includes(userId))
+      const chatStateData = chatState();
+      const currentOnline = chatStateData.onlineUsers;
+      
+      if (!currentOnline.includes(userId)) {
         chatState().setOnlineUsers([...currentOnline, userId]);
+      }
+
+      // 🛡️ Backfill Delivery: Upgrade "sent" to "delivered" when target comes online
+      if (chatStateData.selectedUser?.id === userId) {
+        const updatedMessages = chatStateData.messages.map((msg) => {
+          if (msg.senderId !== userId && msg.status === "sent") {
+            return { ...msg, status: "delivered" as const };
+          }
+          return msg;
+        });
+        chatState().setMessages(updatedMessages);
+      }
     };
 
     const handleUserOffline = (userId: string) => {
       chatState().setOnlineUsers(
-        chatState().onlineUsers.filter((id) => id !== userId),
+        chatState().onlineUsers.filter((id) => id !== userId)
       );
     };
 
@@ -181,11 +196,12 @@ export const useChatSocketEvents = () => {
     socket.on("messagesRead", handleMessagesRead);
     socket.on("receiveMessage", handleNewMessage);
     socket.on("receive_channel_message", handleNewChannelMessage);
+    socket.on("message_deleted", handleMessageDeleted);
 
     socket.on("userTyping", handleTyping);
     socket.on("userStoppedTyping", handleStopTyping);
     socket.on("getOnlineUsers", (userIds: string[]) =>
-      chatState().setOnlineUsers(userIds),
+      chatState().setOnlineUsers(userIds)
     );
     socket.on("userOnline", handleUserOnline);
     socket.on("userOffline", handleUserOffline);
@@ -200,6 +216,7 @@ export const useChatSocketEvents = () => {
       socket.off("messagesRead", handleMessagesRead);
       socket.off("receiveMessage", handleNewMessage);
       socket.off("receive_channel_message", handleNewChannelMessage);
+      socket.off("message_deleted", handleMessageDeleted);
       socket.off("userTyping", handleTyping);
       socket.off("userStoppedTyping", handleStopTyping);
       socket.off("getOnlineUsers");
