@@ -108,6 +108,7 @@ export interface MessageSlice {
   ) => void;
   updateRealMessageId: (tempId: string, realId: string) => void;
   deleteMessage: (messageId: string) => void;
+  editMessage: (messageId: string, newText: string) => void;
 }
 
 // THE UNIFIED STORE TYPE
