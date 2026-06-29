@@ -3,7 +3,7 @@
 import React, { useRef, useEffect, useLayoutEffect } from "react";
 import { useChatStore } from "@/src/store/chat";
 import { useAuthStore } from "@/src/store/authStore";
-import ChatInput from "../ChatInput";
+import ChatInput from "@/src/components/chat/chat-input/ChatInput";
 
 import EmptyState from "./EmptyState";
 import ChatHeader from "./ChatHeader";

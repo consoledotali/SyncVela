@@ -34,28 +34,25 @@ export const registerDMHandlers = (
     }
   });
 
-  // 🛡️ THE FIX: Changed event name to "sendMessage" to match ChatInput.tsx
-  socket.on("sendMessage", async (payload: any) => {
+  socket.on("sendPrivateMessage", async (payload: any) => {
     try {
-      const { roomId, targetUserId, message } = payload;
-      if (!roomId || !message) return;
+      const { roomId, text, attachmentUrl, targetUserId, tempId } = payload;
 
-      // Extract from the nested message object
-      const textData = message.text || message.content;
-      const attachmentUrl = message.attachmentUrl;
-      const tempId = message.tempId;
-
-      const hasText = textData && textData.trim() !== "";
+      const hasText = text && text.trim() !== "";
       const hasAttachment = attachmentUrl && attachmentUrl.trim() !== "";
 
       if (!hasText && !hasAttachment) return;
 
+      // 🟢 THE SENDER FIX (Jo tum ne pichli dafa ignore kar diya tha)
       const savedMessage = await prisma.message.create({
         data: {
-          content: hasText ? textData.trim() : null,
+          content: hasText ? text.trim() : null,
           attachmentUrl: hasAttachment ? attachmentUrl : null,
           senderId: userId,
           conversationId: roomId,
+        },
+        include: {
+          sender: { select: { id: true, name: true, avatarUrl: true } },
         },
       });
 
@@ -71,6 +68,8 @@ export const registerDMHandlers = (
         senderId: savedMessage.senderId,
         createdAt: savedMessage.createdAt,
         tempId: tempId,
+        status: "delivered",
+        sender: savedMessage.sender, // 🟢 SENDER DETAILS NOW BROADCASTED
       };
 
       io.to(targetUserId).emit("receiveMessage", broadcastPayload);
@@ -90,16 +89,22 @@ export const registerDMHandlers = (
     "markAsRead",
     async (payload: { roomId: string; targetUserId: string }) => {
       try {
+        const serverReadTime = new Date();
         await prisma.participant.update({
           where: {
             userId_conversationId: { userId, conversationId: payload.roomId },
           },
-          data: { lastReadAt: new Date() },
+          data: { lastReadAt: serverReadTime },
         });
+
+        // 🔵 CLOCK SKEW FIX: Sending absolute server time
         io.to(payload.targetUserId).emit("messagesRead", {
           roomId: payload.roomId,
+          readAt: serverReadTime.toISOString(),
         });
-      } catch (error) {}
+      } catch (error) {
+        console.error("❌ Mark as read failed:", error);
+      }
     },
   );
 

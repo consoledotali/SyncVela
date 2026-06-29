@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useState } from "react";
 import { useSocket } from "@/src/providers/SocketProvider";
 import { useChatStore, Message } from "@/src/store/chat";
 import {
@@ -19,10 +19,13 @@ import {
   File,
   Download,
   Trash2,
+  Pencil,
+  X,
+  Check as CheckIcon,
 } from "lucide-react";
 
 // ============================================================================
-// 🛠️ 1. UTILS: PURE FUNCTIONS (No React lifecycle overhead)
+// 🛠️ 1. UTILS
 // ============================================================================
 const getFileDetails = (url: string) => {
   try {
@@ -31,7 +34,6 @@ const getFileDetails = (url: string) => {
     const filename = decodeURIComponent(
       cleanUrl.split("/").pop() || "attachment",
     );
-
     if (["jpg", "jpeg", "png", "gif", "webp", "svg"].includes(extension))
       return { type: "image", extension, filename, Icon: ImageIcon };
     if (["mp4", "webm", "mov"].includes(extension))
@@ -49,7 +51,6 @@ const getFileDetails = (url: string) => {
       };
     if (["zip", "rar", "7z", "tar", "gz"].includes(extension))
       return { type: "archive", extension, filename, Icon: FileArchive };
-
     return { type: "unknown", extension, filename, Icon: File };
   } catch {
     return {
@@ -62,22 +63,14 @@ const getFileDetails = (url: string) => {
 };
 
 // ============================================================================
-// 🧩 2. MICRO-COMPONENTS: ISOLATED UI BLOCKS
+// 🧩 2. MICRO-COMPONENTS
 // ============================================================================
-
-// 🟢 STATUS INDICATOR (The WhatsApp/Slack Logic Engine)
 const MessageStatus = ({
   status,
   isReadRealtime,
   isChannel,
   isTargetOnline,
-}: {
-  status?: string;
-  isReadRealtime: boolean;
-  isChannel: boolean;
-  isTargetOnline: boolean;
-}) => {
-  // Slack Architecture: No ticks in channels, only pending state if network is slow
+}: any) => {
   if (isChannel) {
     if (status === "pending")
       return (
@@ -85,11 +78,7 @@ const MessageStatus = ({
       );
     return null;
   }
-
-  // WhatsApp Architecture: DMs need exact tick status
-  const safeStatus = status || "delivered"; // Historical messages from DB are delivered
-
-  // Backfill logic: If RAM says "sent" but we know target is online, effectively consider it "delivered"
+  const safeStatus = status || "delivered";
   const effectivelyDelivered =
     safeStatus === "delivered" || (safeStatus === "sent" && isTargetOnline);
 
@@ -107,20 +96,8 @@ const MessageStatus = ({
   );
 };
 
-// 🟢 ATTACHMENT RENDERER
-const AttachmentPreview = ({
-  msg,
-  fileType,
-  filename,
-  FileIcon,
-}: {
-  msg: Message;
-  fileType: string;
-  filename: string;
-  FileIcon: any;
-}) => {
+const AttachmentPreview = ({ msg, fileType, filename, FileIcon }: any) => {
   if (!msg.attachmentUrl) return null;
-
   if (fileType === "image") {
     return (
       <div className="mt-1.5 overflow-hidden rounded-lg border border-border max-w-sm bg-muted/20 hover:opacity-95 transition-opacity cursor-pointer">
@@ -133,7 +110,6 @@ const AttachmentPreview = ({
       </div>
     );
   }
-
   if (fileType === "video") {
     return (
       <div className="mt-1.5 overflow-hidden rounded-lg border border-border max-w-sm bg-black">
@@ -145,7 +121,6 @@ const AttachmentPreview = ({
       </div>
     );
   }
-
   return (
     <a
       href={msg.attachmentUrl}
@@ -170,36 +145,33 @@ const AttachmentPreview = ({
 };
 
 // ============================================================================
-// 🚀 3. THE MAIN ORCHESTRATOR COMPONENT
+// 🚀 3. THE MAIN COMPONENT
 // ============================================================================
-interface MessageBubbleProps {
-  msg: Message;
-  isMe: boolean;
-  isReadRealtime: boolean;
-  hideHeader?: boolean;
-}
-
 export default function MessageBubble({
   msg,
   isMe,
   isReadRealtime,
   hideHeader = false,
-}: MessageBubbleProps) {
+}: any) {
   const { socket } = useSocket();
   const {
     activeChannelId,
     activeRoomId,
     selectedUser,
     deleteMessage,
+    editMessage,
     onlineUsers,
   } = useChatStore();
+
+  // Local State for Inline Editing
+  const [isEditing, setIsEditing] = useState(false);
+  const [editText, setEditText] = useState(msg.text || "");
 
   const isChannelView = !!activeChannelId;
   const isTargetOnline = selectedUser
     ? onlineUsers.includes(selectedUser.id)
     : false;
 
-  // Derive file info
   const {
     type: fileType,
     filename,
@@ -207,8 +179,6 @@ export default function MessageBubble({
   } = msg.attachmentUrl
     ? getFileDetails(msg.attachmentUrl)
     : { type: "none", filename: "", Icon: File };
-
-  // Derive sender info
   const senderName = msg.sender?.name || (isMe ? "You" : "User");
   const initials = senderName.substring(0, 2).toUpperCase();
   const timeString = new Date(msg.createdAt).toLocaleTimeString([], {
@@ -216,7 +186,6 @@ export default function MessageBubble({
     minute: "2-digit",
   });
 
-  // Handle Deletion
   const handleDelete = () => {
     if (!socket || !isMe) return;
     deleteMessage(msg.id);
@@ -228,14 +197,53 @@ export default function MessageBubble({
     });
   };
 
+  const handleEditSubmit = () => {
+    if (!socket || !isMe || editText.trim() === "" || editText === msg.text) {
+      setIsEditing(false);
+      return;
+    }
+    // Optimistic Update
+    editMessage(msg.id, editText.trim());
+    setIsEditing(false);
+
+    // Broadcast Mutation
+    socket.emit("edit_message", {
+      messageId: msg.id,
+      newText: editText.trim(),
+      roomId: activeChannelId || activeRoomId,
+      isChannel: isChannelView,
+      targetUserId: selectedUser?.id,
+    });
+  };
+
+  const handleKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === "Enter" && !e.shiftKey) {
+      e.preventDefault();
+      handleEditSubmit();
+    }
+    if (e.key === "Escape") {
+      setIsEditing(false);
+      setEditText(msg.text || "");
+    }
+  };
+
   return (
     <div
       className={`relative group flex gap-3 px-6 py-1 hover:bg-muted/40 transition-colors duration-150 ${!hideHeader ? "mt-3" : ""}`}
     >
-      {/* 🔴 SLACK-STYLE FLOATING ACTION DOCK (Visible on hover) */}
-      {isMe && (
+      {/* 🔴 ACTION DOCK (Trash + Edit) */}
+      {isMe && !isEditing && (
         <div className="absolute right-6 -top-3.5 opacity-0 group-hover:opacity-100 transition-all duration-150 z-20 pointer-events-none group-hover:pointer-events-auto">
           <div className="flex items-center border border-border bg-popover text-popover-foreground rounded-md shadow-md overflow-hidden p-0.5 h-8">
+            {msg.text && (
+              <button
+                onClick={() => setIsEditing(true)}
+                className="p-1.5 hover:bg-muted text-muted-foreground hover:text-foreground rounded transition-colors"
+                title="Edit Message"
+              >
+                <Pencil className="h-3.5 w-3.5" />
+              </button>
+            )}
             <button
               onClick={handleDelete}
               className="p-1.5 hover:bg-destructive/10 text-muted-foreground hover:text-destructive rounded transition-colors"
@@ -247,7 +255,7 @@ export default function MessageBubble({
         </div>
       )}
 
-      {/* 🖼️ LEFT COLUMN: Avatar OR Micro-Timestamp */}
+      {/* 🖼️ LEFT COLUMN */}
       <div className="w-9 shrink-0 flex items-start justify-center select-none">
         {!hideHeader ? (
           <Avatar className="h-9 w-9 border border-border rounded shadow-sm mt-0.5">
@@ -265,9 +273,8 @@ export default function MessageBubble({
         )}
       </div>
 
-      {/* 📝 RIGHT COLUMN: Metadata & Content */}
+      {/* 📝 RIGHT COLUMN */}
       <div className="flex flex-col min-w-0 flex-1">
-        {/* Header: Name, Time, and Status Ticks */}
         {!hideHeader && (
           <div className="flex items-baseline gap-2 mb-0.5 select-none">
             <span className="font-semibold text-sm text-foreground hover:underline cursor-pointer">
@@ -287,14 +294,47 @@ export default function MessageBubble({
           </div>
         )}
 
-        {/* The Actual Text */}
-        {msg.text && msg.text.trim() !== "" && (
-          <p className="text-sm text-foreground/90 leading-relaxed whitespace-pre-wrap break-words">
-            {msg.text}
-          </p>
+        {/* 🟡 INLINE EDIT ENGINE OR NORMAL TEXT */}
+        {isEditing ? (
+          <div className="mt-1 max-w-2xl bg-background border border-border rounded-lg p-2 shadow-sm focus-within:border-primary transition-colors">
+            <textarea
+              autoFocus
+              value={editText}
+              onChange={(e) => setEditText(e.target.value)}
+              onKeyDown={handleKeyDown}
+              className="w-full text-sm bg-transparent resize-none outline-none text-foreground leading-relaxed"
+              rows={2}
+            />
+            <div className="flex justify-end gap-2 mt-2">
+              <button
+                onClick={() => {
+                  setIsEditing(false);
+                  setEditText(msg.text || "");
+                }}
+                className="text-xs px-2 py-1 hover:bg-muted text-muted-foreground rounded transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleEditSubmit}
+                className="text-xs px-3 py-1 bg-primary text-primary-foreground font-medium rounded transition-colors"
+              >
+                Save
+              </button>
+            </div>
+            <span className="text-[10px] text-muted-foreground mt-1 block px-1">
+              escape to cancel • enter to save
+            </span>
+          </div>
+        ) : (
+          msg.text &&
+          msg.text.trim() !== "" && (
+            <p className="text-sm text-foreground/90 leading-relaxed whitespace-pre-wrap break-words mt-0.5">
+              {msg.text}
+            </p>
+          )
         )}
 
-        {/* The Media / Attachment */}
         <AttachmentPreview
           msg={msg}
           fileType={fileType}

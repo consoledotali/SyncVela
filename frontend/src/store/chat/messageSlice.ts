@@ -38,15 +38,17 @@ export const createMessageSlice: StateCreator<
       ),
     })),
 
+  // 🛡️ THE FIX: Ensure we check msg.tempId, not msg.id, when validating temp IDs
   updateMessageStatus: (messageId, status, tempId) =>
     set((state) => ({
       messages: state.messages.map((msg) =>
-        msg.id === messageId || (tempId && msg.id === tempId)
+        msg.id === messageId || (tempId && msg.tempId === tempId)
           ? { ...msg, status }
           : msg,
       ),
     })),
 
+  // 🔴 THE PENDING CLOCK FIX: Status MUST be upgraded to "sent" when DB acknowledges
   updateRealMessageId: (tempId: string, realId: string) =>
     set((state) => ({
       messages: state.messages.map((msg) =>
@@ -59,5 +61,13 @@ export const createMessageSlice: StateCreator<
   deleteMessage: (messageId: string) =>
     set((state) => ({
       messages: state.messages.filter((msg) => msg.id !== messageId),
+    })),
+
+  // 🟠 EDIT LOGIC
+  editMessage: (messageId: string, newText: string) =>
+    set((state) => ({
+      messages: state.messages.map((msg) =>
+        msg.id === messageId ? { ...msg, text: newText } : msg,
+      ),
     })),
 });
