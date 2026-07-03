@@ -9,8 +9,10 @@ export const registerMessageActionHandlers = (
   // 🔴 DELETION ENGINE
   socket.on("delete_message", async (payload: any, callback: any) => {
     try {
+      const { messageId, roomId, isChannel, targetUserId } = payload;
+
       const existingMessage = await prisma.message.findUnique({
-        where: { id: payload.messageId },
+        where: { id: messageId },
       });
       if (!existingMessage) {
         if (callback) callback({ error: "Message not found" });
@@ -21,16 +23,21 @@ export const registerMessageActionHandlers = (
         return;
       }
 
-      await prisma.message.delete({ where: { id: payload.messageId } });
+      await prisma.message.delete({ where: { id: messageId } });
 
-      if (payload.isChannel) {
-        io.to(`channel_${payload.roomId}`).emit("message_deleted", {
-          messageId: payload.messageId,
-        });
-      } else if (payload.targetUserId) {
-        io.to(payload.targetUserId).emit("message_deleted", {
-          messageId: payload.messageId,
-        });
+      // 🛡️ THE GHOST COUNT FIX: Broadcast senderId so frontend can decrement the correct badge
+      const broadcastData = {
+        messageId,
+        roomId,
+        isChannel,
+        senderId: userId,
+      };
+
+      if (isChannel) {
+        io.to(`channel_${roomId}`).emit("message_deleted", broadcastData);
+      } else if (targetUserId) {
+        io.to(targetUserId).emit("message_deleted", broadcastData);
+        socket.emit("message_deleted", broadcastData); // Self update
       }
 
       if (callback) callback({ status: "ok" });
@@ -40,7 +47,7 @@ export const registerMessageActionHandlers = (
     }
   });
 
-  // 🟠 EDIT ENGINE (THE NEW FIX)
+  // 🟠 EDIT ENGINE
   socket.on("edit_message", async (payload: any, callback: any) => {
     try {
       const { messageId, newText, roomId, isChannel, targetUserId } = payload;
@@ -59,13 +66,11 @@ export const registerMessageActionHandlers = (
         return;
       }
 
-      // Update Database
       await prisma.message.update({
         where: { id: messageId },
         data: { content: newText.trim() },
       });
 
-      // Broadcast to specific radar
       const broadcastData = { messageId, newText: newText.trim(), roomId };
 
       if (isChannel) {

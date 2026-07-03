@@ -1,12 +1,15 @@
-import React from "react";
+import React, { useState } from "react";
 import { Button } from "@/src/components/ui/button";
 import {
   Avatar,
   AvatarFallback,
   AvatarImage,
 } from "@/src/components/ui/avatar";
-import { Lock, Hash, ArrowLeft } from "lucide-react";
-import { Channel, SidebarUser } from "@/src/store/chat";
+import { Lock, Hash, ArrowLeft, UserPlus, Users } from "lucide-react"; // 🟢 Users import kiya
+import { Channel, SidebarUser, useChatStore } from "@/src/store/chat";
+import { useAuthStore } from "@/src/store/authStore";
+import InviteModal from "./InviteModal";
+import ChannelMembersModal from "../ChannelMembersModal";
 
 interface ChatHeaderProps {
   isChannelView: boolean;
@@ -21,6 +24,24 @@ export default function ChatHeader({
   selectedUser,
   onBack,
 }: ChatHeaderProps) {
+  const [isInviteModalOpen, setIsInviteModalOpen] = useState(false);
+  const [isMembersModalOpen, setIsMembersModalOpen] = useState(false); // 🟢 Nayi state
+
+  const { user } = useAuthStore();
+  const { workspaces, activeWorkspaceId } = useChatStore();
+  const activeWorkspace = workspaces.find((w) => w.id === activeWorkspaceId);
+
+  // 🛡️ ROLE CHECK FOR ADDING MEMBERS
+  const isOwner =
+    activeWorkspace &&
+    user &&
+    ((activeWorkspace as any).ownerId === user.id ||
+      (activeWorkspace as any).creatorId === user.id ||
+      (activeWorkspace as any).userId === user.id ||
+      (activeWorkspace as any).members?.some(
+        (m: any) => m.userId === user.id && m.role === "OWNER",
+      ));
+
   return (
     <header className="sticky top-0 z-10 flex items-center justify-between px-4 py-3 border-b border-border bg-background select-none">
       <div className="flex items-center gap-3">
@@ -64,6 +85,51 @@ export default function ChatHeader({
           )
         )}
       </div>
+
+      {/* Action Buttons Section */}
+      {isChannelView && activeChannel && (
+        <div className="ml-auto flex items-center gap-2">
+          {/* 🟢 VIEW MEMBERS BUTTON (Har kisi ko dikhega) */}
+          <Button
+            variant="ghost"
+            size="sm"
+            className="h-8 px-2 text-muted-foreground hover:text-foreground"
+            onClick={() => setIsMembersModalOpen(true)}
+            title="View Channel Members"
+          >
+            <Users className="h-4 w-4" />
+          </Button>
+
+          {/* 🛡️ ADD MEMBERS BUTTON (Sirf owner ko dikhega, aur sirf private channel mein) */}
+          {activeChannel.type === "PRIVATE" && isOwner && (
+            <Button
+              variant="outline"
+              size="sm"
+              className="h-8 gap-2 text-muted-foreground hover:text-foreground"
+              onClick={() => setIsInviteModalOpen(true)}
+            >
+              <UserPlus className="h-4 w-4" />
+              <span className="hidden sm:inline">Add Members</span>
+            </Button>
+          )}
+        </div>
+      )}
+
+      {/* Modals */}
+      <InviteModal
+        isOpen={isInviteModalOpen}
+        onClose={() => setIsInviteModalOpen(false)}
+      />
+
+      {/* 🟢 NAYA MODAL RENDER */}
+      {activeChannel && (
+        <ChannelMembersModal
+          isOpen={isMembersModalOpen}
+          onClose={() => setIsMembersModalOpen(false)}
+          channelId={activeChannel.id}
+          channelName={activeChannel.name}
+        />
+      )}
     </header>
   );
 }

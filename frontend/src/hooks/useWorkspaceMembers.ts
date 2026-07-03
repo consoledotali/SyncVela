@@ -8,7 +8,7 @@ export const useWorkspaceMembers = () => {
 
   useEffect(() => {
     if (!activeWorkspaceId || !token) {
-      setUsers([]); // Agar workspace nahi hai, toh DMs khali kar do
+      setUsers([]);
       return;
     }
 
@@ -16,16 +16,23 @@ export const useWorkspaceMembers = () => {
       try {
         const response = await fetch(
           `http://localhost:5000/api/workspaces/${activeWorkspaceId}/members`,
-          {
-            headers: { Authorization: `Bearer ${token}` },
-          },
+          { headers: { Authorization: `Bearer ${token}` } },
         );
 
         if (response.ok) {
           const members = await response.json();
-          // 🛡️ Khud ko (current user ko) list se nikal do, taake user khud se DM na kare
           const filteredMembers = members.filter((m: any) => m.id !== user?.id);
           setUsers(filteredMembers);
+
+          // 🛡️ THE HYDRATION FIX: Store memory ko DM unread counts se bharo
+          const counts: Record<string, number> = {};
+          filteredMembers.forEach((m: any) => {
+            if (m.unreadCount > 0) counts[m.id] = m.unreadCount;
+          });
+
+          useChatStore.setState((state) => ({
+            unreadCounts: { ...state.unreadCounts, ...counts },
+          }));
         }
       } catch (error) {
         console.error("❌ Failed to load workspace members", error);

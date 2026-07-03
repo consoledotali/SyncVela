@@ -34,54 +34,83 @@ export const registerDMHandlers = (
     }
   });
 
-  socket.on("sendPrivateMessage", async (payload: any) => {
+  socket.on("sendPrivateMessage", async (payload: any, callback: any) => {
     try {
-      const { roomId, text, attachmentUrl, targetUserId, tempId } = payload;
+      const { roomId, targetUserId, text, attachmentUrl, tempId } = payload;
+      const textData = text || payload.content;
 
-      const hasText = text && text.trim() !== "";
+      const hasText = textData && textData.trim() !== "";
       const hasAttachment = attachmentUrl && attachmentUrl.trim() !== "";
 
-      if (!hasText && !hasAttachment) return;
+      if (!targetUserId || (!hasText && !hasAttachment)) return;
 
-      // 🟢 THE SENDER FIX (Jo tum ne pichli dafa ignore kar diya tha)
+      // 🛡️ THE BULLETPROOF FIX: Verify if the room actually exists in DB
+      let validConversationId = roomId;
+
+      if (roomId) {
+        const existingConvo = await prisma.conversation.findUnique({
+          where: { id: roomId },
+          select: { id: true },
+        });
+
+        // Agar DB wipe ho gaya tha aur frontend purana ID bhej raha hai
+        if (!existingConvo) {
+          validConversationId = null;
+        }
+      }
+
+      // Agar room invalid tha ya pehli dafa chat ho rahi hai, toh naya room dhundo/banao
+      if (!validConversationId) {
+        let fallbackConvo = await prisma.conversation.findFirst({
+          where: {
+            isGroup: false,
+            AND: [
+              { participants: { some: { userId: userId } } },
+              { participants: { some: { userId: targetUserId } } },
+            ],
+          },
+        });
+
+        if (!fallbackConvo) {
+          fallbackConvo = await prisma.conversation.create({
+            data: {
+              isGroup: false,
+              participants: {
+                create: [{ userId: userId }, { userId: targetUserId }],
+              },
+            },
+          });
+        }
+        validConversationId = fallbackConvo.id;
+      }
+
+      // 🚀 Now create the message with a 100% guaranteed valid ID
       const savedMessage = await prisma.message.create({
         data: {
-          content: hasText ? text.trim() : null,
+          content: hasText ? textData.trim() : null,
           attachmentUrl: hasAttachment ? attachmentUrl : null,
           senderId: userId,
-          conversationId: roomId,
+          conversationId: validConversationId, // ✅ FKEY CRASH PREVENTED
         },
         include: {
           sender: { select: { id: true, name: true, avatarUrl: true } },
         },
       });
 
-      await prisma.conversation.update({
-        where: { id: roomId },
-        data: { lastMessageAt: savedMessage.createdAt },
-      });
+      const broadcastPayload = { ...savedMessage, tempId };
 
-      const broadcastPayload = {
-        id: savedMessage.id,
-        text: savedMessage.content,
-        attachmentUrl: savedMessage.attachmentUrl,
-        senderId: savedMessage.senderId,
-        createdAt: savedMessage.createdAt,
-        tempId: tempId,
-        status: "delivered",
-        sender: savedMessage.sender, // 🟢 SENDER DETAILS NOW BROADCASTED
-      };
-
+      // Emit to both users
+      socket.emit("receiveMessage", broadcastPayload);
       io.to(targetUserId).emit("receiveMessage", broadcastPayload);
 
       if (tempId) {
-        socket.emit("messageSentAck", {
-          tempId: tempId,
-          realId: savedMessage.id,
-        });
+        socket.emit("messageSentAck", { tempId, realId: savedMessage.id });
       }
+
+      if (callback) callback({ status: "ok", realId: savedMessage.id, tempId });
     } catch (error) {
-      console.error("❌ [DM] Routing Failed:", error);
+      console.error("\n❌❌❌ [DM] PRISMA DATABASE CRASH ❌❌❌", error);
+      if (callback) callback({ error: "Failed to send private message" });
     }
   });
 

@@ -6,7 +6,6 @@ import cookieParser from "cookie-parser";
 
 // Routes Import
 import authRoutes from "./routes/authRoutes";
-import chatRoutes from "./routes/chatRoutes";
 import userRoutes from "./routes/userRoutes";
 import uploadRoutes from "./routes/uploadRoutes";
 import workspaceRoutes from "./routes/workspaceRoutes";
@@ -38,7 +37,6 @@ app.use(express.json());
 
 // API Routes
 app.use("/api/auth", authRoutes);
-app.use("/api/chat", chatRoutes);
 app.use("/api/users", userRoutes);
 app.use("/api/upload", uploadRoutes);
 app.use("/api/workspaces", workspaceRoutes);

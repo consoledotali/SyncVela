@@ -1,7 +1,12 @@
 import { StateCreator } from "zustand";
 import { ChatStore, WorkspaceSlice } from "./types";
 
-export const createWorkspaceSlice: StateCreator<ChatStore, [], [], WorkspaceSlice> = (set) => ({
+export const createWorkspaceSlice: StateCreator<
+  ChatStore,
+  [],
+  [],
+  WorkspaceSlice
+> = (set) => ({
   workspaces: [],
   channels: [],
   activeWorkspaceId: null,
@@ -16,8 +21,15 @@ export const createWorkspaceSlice: StateCreator<ChatStore, [], [], WorkspaceSlic
       activeChannelId: id,
       selectedUser: null,
       activeRoomId: null,
-      messages: [], 
+      messages: [],
       hasMore: false,
       nextCursor: null,
     }),
+
+  updateChannelActivity: (channelId, timestamp) =>
+    set((state) => ({
+      channels: state.channels.map((c) =>
+        c.id === channelId ? { ...c, lastMessageAt: timestamp } : c,
+      ),
+    })),
 });

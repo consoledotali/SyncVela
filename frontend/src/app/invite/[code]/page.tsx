@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useState, useRef } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { useAuthStore } from "@/src/store/authStore";
 import { Loader2, ShieldCheck, XCircle, UserCheck } from "lucide-react";
@@ -11,21 +11,25 @@ export default function InvitePage() {
   const router = useRouter();
   const { isAuthenticated, token } = useAuthStore();
 
-  // 🛡️ THE UX FIX: Added "already_member" state
   const [status, setStatus] = useState<
     "loading" | "success" | "already_member" | "error"
   >("loading");
   const [errorMessage, setErrorMessage] = useState("");
 
   const inviteCode = params.code as string;
+  const hasFetched = useRef(false); // 🟢 THE STRICT MODE GATEKEEPER
 
   useEffect(() => {
-    // GATEKEEPER
+    // 🟢 GATEKEEPER: THE AMNESIA FIX
     if (!isAuthenticated || !token) {
-      sessionStorage.setItem("redirectAfterLogin", `/invite/${inviteCode}`);
+      localStorage.setItem("pendingInvite", `/invite/${inviteCode}`);
       router.push("/auth/login");
       return;
     }
+
+    // 🟢 Agar hit ho chuka hai toh dobara mat jao (Strict Mode Fix)
+    if (hasFetched.current) return;
+    hasFetched.current = true;
 
     const joinWorkspace = async () => {
       try {
@@ -41,14 +45,19 @@ export default function InvitePage() {
 
         if (response.ok) {
           setStatus("success");
-          setTimeout(() => router.push("/"), 1500);
+          // 🟢 THE SOFT-NAVIGATION FIX: Hard reload the app so workspaces are re-fetched!
+          setTimeout(() => {
+            window.location.href = "/";
+          }, 1500);
         } else {
           const err = await response.json();
 
-          // 🛡️ THE UX FIX: Agar user pehle se member hai, toh darrana nahi hai!
           if (err.error === "You are already in this workspace.") {
             setStatus("already_member");
-            setTimeout(() => router.push("/"), 1500); // 1.5 second baad smoothly chat par bhej do
+            // 🟢 THE SOFT-NAVIGATION FIX
+            setTimeout(() => {
+              window.location.href = "/";
+            }, 1500);
           } else {
             setErrorMessage(
               err.error || "Failed to join workspace. Invalid or expired link.",
@@ -96,7 +105,6 @@ export default function InvitePage() {
           </div>
         )}
 
-        {/* 🛡️ NEW: ALREADY A MEMBER UI */}
         {status === "already_member" && (
           <div className="flex flex-col items-center animate-in fade-in zoom-in duration-300">
             <div className="h-16 w-16 bg-indigo-50 text-indigo-600 rounded-full flex items-center justify-center mb-6">

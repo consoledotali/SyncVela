@@ -14,17 +14,26 @@ export default function ChatInput() {
   const [attachment, setAttachment] = useState<File | null>(null);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const typingTimeoutRef = useRef<NodeJS.Timeout | null>(null); // 🛡️ TIMER STATE
+  const typingTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
   const { socket } = useSocket();
   const { user } = useAuthStore();
-  const { activeRoomId, activeChannelId, selectedUser, addPendingMessage } =
-    useChatStore();
+
+  const {
+    activeRoomId,
+    activeChannelId,
+    selectedUser,
+    addPendingMessage,
+    channels,
+  } = useChatStore();
 
   const { uploadFile, isUploading } = useS3Upload();
 
   const isChannelView = !!activeChannelId;
   const isDMView = !!selectedUser;
+
+  // 🟢 THE FIX: Store ki array mein se active channel ka object dhoondo
+  const activeChannel = channels?.find((c) => c.id === activeChannelId);
 
   // ==========================================
   // ⌨️ TYPING ENGINE (WITH DEBOUNCE)
@@ -32,17 +41,14 @@ export default function ChatInput() {
   const handleTyping = () => {
     if (!socket || !user || !isDMView || !selectedUser) return;
 
-    // Trigger typing event
     socket.emit("typing", {
       roomId: activeRoomId,
       targetUserId: selectedUser.id,
       senderId: user.id,
     });
 
-    // 🛡️ Clear old timer if user is still typing
     if (typingTimeoutRef.current) clearTimeout(typingTimeoutRef.current);
 
-    // 🛡️ Auto-Stop typing after 2 seconds of silence
     typingTimeoutRef.current = setTimeout(() => {
       socket.emit("stopTyping", {
         roomId: activeRoomId,
@@ -63,7 +69,6 @@ export default function ChatInput() {
     });
   };
 
-  // Cleanup timer on unmount
   useEffect(() => {
     return () => {
       if (typingTimeoutRef.current) clearTimeout(typingTimeoutRef.current);
@@ -146,7 +151,7 @@ export default function ChatInput() {
 
     setMessage("");
     setAttachment(null);
-    handleStopTypingExplicit(); // Stop typing immediately on send
+    handleStopTypingExplicit();
   };
 
   if (!isChannelView && !isDMView) return null;
@@ -187,11 +192,12 @@ export default function ChatInput() {
               setMessage(e.target.value);
               handleTyping();
             }}
-            onBlur={handleStopTypingExplicit} // Failsafe
+            onBlur={handleStopTypingExplicit}
+            // 🟢 THE FIX: Ab display mein raw ID nahi, actual channel ka naam aayega
             placeholder={
               isUploading
                 ? "Uploading file..."
-                : `Message ${isChannelView ? "#" + activeChannelId : selectedUser?.name}`
+                : `Message ${isChannelView ? "#" + (activeChannel?.name || "channel") : selectedUser?.name}`
             }
             className="flex-1 bg-transparent border-none focus:outline-none px-2 py-2 text-[15px] placeholder:text-muted-foreground disabled:opacity-50"
             disabled={isUploading}

@@ -50,7 +50,6 @@ export const useAuthForm = (initialMode: boolean = true) => {
 
       // 🛡️ 1. ERROR HANDLING & GATEKEEPER
       if (!response.ok) {
-        // Agar account verify nahi hai, toh seedha OTP screen par bhejo
         if (data.error === "EMAIL_NOT_VERIFIED") {
           router.push(
             `/verify-otp?email=${encodeURIComponent(formData.email)}`,
@@ -64,11 +63,17 @@ export const useAuthForm = (initialMode: boolean = true) => {
 
       // 🛡️ 2. SUCCESS HANDLING (Separated Logic)
       if (isLoginMode) {
-        // Sirf login ki soorat mein state update karo aur andar jane do
         login(data.user, data.accessToken || data.token);
-        router.push("/");
+
+        // 🟢 THE AMNESIA FIX: Check if user came from an invite link
+        const pendingInvite = localStorage.getItem("pendingInvite");
+        if (pendingInvite) {
+          localStorage.removeItem("pendingInvite"); // Kachra saaf karo
+          router.push(pendingInvite); // Wapas invite par bhejo
+        } else {
+          router.push("/");
+        }
       } else {
-        // Registration ki soorat mein token nahi milta, OTP screen par bhejo
         router.push(`/verify-otp?email=${encodeURIComponent(formData.email)}`);
       }
     } catch (err: any) {

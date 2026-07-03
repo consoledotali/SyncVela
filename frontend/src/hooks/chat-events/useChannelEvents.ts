@@ -38,12 +38,32 @@ export const useChannelEvents = (socket: any) => {
           sender: message.sender,
           status: "sent",
         } as any);
+
+        socket.emit("markChannelAsRead", { channelId: message.channelId });
       } else {
         chatState().incrementChannelUnread(message.channelId);
       }
     };
 
+    // 🟢 THE RADAR FIX: Naya channel receive karna
+    const handleAddedToChannel = (channel: any) => {
+      const state = chatState();
+      const currentChannels = state.channels;
+
+      if (!currentChannels.find((c: any) => c.id === channel.id)) {
+        state.setChannels([...currentChannels, { ...channel, unreadCount: 0 }]);
+
+        // Background mein automatically socket room join karo
+        socket.emit("join_channel", channel.id);
+      }
+    };
+
     socket.on("receive_channel_message", handleNewChannelMessage);
-    return () => socket.off("receive_channel_message", handleNewChannelMessage);
+    socket.on("added_to_channel", handleAddedToChannel); // 🟢 BIND
+
+    return () => {
+      socket.off("receive_channel_message", handleNewChannelMessage);
+      socket.off("added_to_channel", handleAddedToChannel); // 🟢 UNBIND
+    };
   }, [socket]);
 };

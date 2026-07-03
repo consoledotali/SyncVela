@@ -121,6 +121,8 @@ model ChannelMember {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
+  lastReadAt DateTime? @default(now())
+
   userId String
   user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
 
@@ -181,8 +183,6 @@ model Message {
   senderId String
   sender   User   @relation(fields: [senderId], references: [id], onDelete: Cascade)
 
-  // 🛡️ ARCHITECTURAL FIX: Message belongs to EITHER a DM OR a Channel.
-  // Dono ko optional (?) karna zaroori hai.
   conversationId String?
   conversation   Conversation? @relation(fields: [conversationId], references: [id], onDelete: Cascade)
 

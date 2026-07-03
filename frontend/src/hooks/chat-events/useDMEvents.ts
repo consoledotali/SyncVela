@@ -72,7 +72,6 @@ export const useDMEvents = (socket: any) => {
 
       if (currentSelectedUser?.id === message.senderId) {
         chatState().addMessage(message);
-        // Doosra user chat mein active hai, foran server ko parhne ka signal do
         if (currentRoomId)
           socket.emit("markAsRead", {
             roomId: currentRoomId,
@@ -88,8 +87,27 @@ export const useDMEvents = (socket: any) => {
       }
     };
 
-    const handleMessageDeleted = ({ messageId }: { messageId: string }) =>
-      chatState().deleteMessage(messageId);
+    // 🛡️ THE GHOST COUNT FIX: Smart badge decrementer
+    const handleMessageDeleted = ({
+      messageId,
+      roomId,
+      isChannel,
+      senderId,
+    }: any) => {
+      const state = chatState();
+
+      // 1. RAM se message urao
+      state.deleteMessage(messageId);
+
+      // 2. Agar unseen message delete hua hai, toh UI par badge ka count minus karo
+      if (isChannel && roomId && state.activeChannelId !== roomId) {
+        state.decrementChannelUnread(roomId);
+      } else if (!isChannel && senderId && state.activeRoomId !== roomId) {
+        if (senderId !== authState().user?.id) {
+          state.decrementUnread(senderId);
+        }
+      }
+    };
 
     const handleMessageEdited = ({
       messageId,
@@ -99,7 +117,6 @@ export const useDMEvents = (socket: any) => {
       newText: string;
     }) => chatState().editMessage(messageId, newText);
 
-    // 🔵 CLOCK SKEW FIX: Ab hum server ka bheja hua absolute time save kar rahe hain
     const handleMessagesRead = ({
       roomId,
       readAt,
@@ -108,7 +125,7 @@ export const useDMEvents = (socket: any) => {
       readAt: string;
     }) => {
       if (chatState().activeRoomId === roomId) {
-        chatState().setTargetLastReadAt(readAt); // Use exact server time
+        chatState().setTargetLastReadAt(readAt);
       }
     };
 

@@ -1,5 +1,6 @@
 import React from "react";
 import { useChatStore, Channel } from "@/src/store/chat";
+import { useAuthStore } from "@/src/store/authStore";
 import { useSocket } from "@/src/providers/SocketProvider";
 import { Hash, Lock, Plus } from "lucide-react";
 import { Badge } from "@/src/components/ui/badge";
@@ -16,15 +17,62 @@ export default function ChannelList({ onOpenModal }: ChannelListProps) {
     channelUnreadCounts,
     clearChannelUnread,
   } = useChatStore();
+
+  const { token } = useAuthStore();
   const { socket } = useSocket();
 
-  const handleChannelSelect = (channel: Channel) => {
+  const handleChannelSelect = async (channel: Channel) => {
     setActiveChannelId(channel.id);
     clearChannelUnread(channel.id);
+
     if (socket) {
       socket.emit("join_channel", channel.id);
+      socket.emit("markChannelAsRead", { channelId: channel.id });
+    }
+
+    if (token) {
+      try {
+        await fetch(`http://localhost:5000/api/channels/mark-read`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${token}`,
+          },
+          body: JSON.stringify({ channelId: channel.id }),
+        });
+      } catch (error) {
+        console.error("Failed to sync read state via API", error);
+      }
     }
   };
+
+  // 🟢 THE PRODUCTION ENGINE FOR CHANNELS
+  const sortedChannels = [...channels].sort((a: any, b: any) => {
+    const timeA = a.lastMessageAt ? new Date(a.lastMessageAt).getTime() : 0;
+    const timeB = b.lastMessageAt ? new Date(b.lastMessageAt).getTime() : 0;
+
+    const aCount =
+      channelUnreadCounts[a.id] !== undefined
+        ? channelUnreadCounts[a.id]
+        : a.unreadCount || 0;
+    const bCount =
+      channelUnreadCounts[b.id] !== undefined
+        ? channelUnreadCounts[b.id]
+        : b.unreadCount || 0;
+
+    // RULE 1: Chronological Time
+    if (timeA !== timeB && (timeA > 0 || timeB > 0)) {
+      return timeB - timeA;
+    }
+
+    // RULE 2: Highest Unread Volume Wins (Fixes count ties)
+    if (aCount !== bCount) {
+      return bCount - aCount;
+    }
+
+    // RULE 3: Alphabetical Lock
+    return a.name.localeCompare(b.name);
+  });
 
   return (
     <div className="mb-4">
@@ -42,14 +90,17 @@ export default function ChannelList({ onOpenModal }: ChannelListProps) {
       </div>
 
       <div className="flex flex-col gap-0.5">
-        {channels.length === 0 ? (
+        {sortedChannels.length === 0 ? (
           <p className="text-[11px] text-muted-foreground px-2 py-1 italic">
             No channels yet.
           </p>
         ) : (
-          channels.map((c) => {
+          sortedChannels.map((c: any) => {
             const isActive = activeChannelId === c.id;
-            const unreadCount = channelUnreadCounts[c.id] || 0;
+            const storeCount = channelUnreadCounts[c.id];
+            const unreadCount =
+              storeCount !== undefined ? storeCount : c.unreadCount || 0;
+            const isUnread = unreadCount > 0 && !isActive;
 
             return (
               <div
@@ -58,31 +109,31 @@ export default function ChannelList({ onOpenModal }: ChannelListProps) {
                 className={`flex justify-between items-center px-2 py-1.5 rounded-md cursor-pointer transition-colors ${
                   isActive
                     ? "bg-primary/10 text-primary font-bold"
-                    : unreadCount > 0
-                      ? "hover:bg-muted/60"
+                    : isUnread
+                      ? "hover:bg-muted/60 text-foreground font-bold"
                       : "text-muted-foreground hover:bg-muted/60 hover:text-foreground font-medium"
                 }`}
               >
                 <div className="flex items-center gap-2 overflow-hidden">
                   {c.type === "PRIVATE" ? (
                     <Lock
-                      className={`h-3.5 w-3.5 ${unreadCount > 0 && !isActive ? "text-foreground" : ""}`}
+                      className={`h-3.5 w-3.5 ${isUnread ? "text-foreground" : "opacity-80"}`}
                     />
                   ) : (
                     <Hash
-                      className={`h-4 w-4 ${unreadCount > 0 && !isActive ? "text-foreground" : ""}`}
+                      className={`h-4 w-4 ${isUnread ? "text-foreground" : "opacity-80"}`}
                     />
                   )}
                   <span
-                    className={`truncate text-sm ${unreadCount > 0 && !isActive ? "font-bold text-foreground" : ""}`}
+                    className={`truncate text-sm ${isUnread ? "font-bold text-foreground" : ""}`}
                   >
                     {c.name}
                   </span>
                 </div>
-                {unreadCount > 0 && (
+                {isUnread && (
                   <Badge
                     variant="destructive"
-                    className="h-4 min-w-4 flex items-center justify-center rounded-full px-1 text-[9px] shrink-0"
+                    className="h-4 min-w-4 flex items-center justify-center rounded-full px-1 text-[9px] shrink-0 font-bold"
                   >
                     {unreadCount}
                   </Badge>

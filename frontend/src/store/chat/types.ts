@@ -15,6 +15,7 @@ export interface Channel {
   name: string;
   type: "PUBLIC" | "PRIVATE";
   workspaceId: string;
+  lastMessageAt?: string;
 }
 
 export interface Message {
@@ -33,6 +34,7 @@ export interface SidebarUser {
   name: string;
   email: string;
   avatarUrl?: string | null;
+  lastMessageAt?: string;
 }
 
 export interface PendingMessage {
@@ -53,6 +55,7 @@ export interface WorkspaceSlice {
   setChannels: (channels: Channel[]) => void;
   setActiveWorkspaceId: (id: string | null) => void;
   setActiveChannelId: (id: string | null) => void;
+  updateChannelActivity: (channelId: string, timestamp: string) => void;
 }
 
 export interface ChatUISlice {
@@ -82,6 +85,9 @@ export interface UserSlice {
   incrementChannelUnread: (channelId: string) => void;
   clearChannelUnread: (channelId: string) => void;
   moveUserToTop: (userId: string) => void;
+  decrementUnread: (userId: string) => void;
+  decrementChannelUnread: (channelId: string) => void;
+  updateUserActivity: (userId: string, timestamp: string) => void;
 }
 
 export interface MessageSlice {

@@ -2,15 +2,13 @@ import { Response } from "express";
 import prisma from "../config/db";
 import { AuthenticatedRequest } from "./channelController";
 
-// 1. CREATE WORKSPACE (With Transactional Safety)
+// 1. CREATE WORKSPACE (NO DEFAULT CHANNELS, REAL-TIME OWNER ID)
 export const createWorkspace = async (
   req: AuthenticatedRequest,
   res: Response,
 ): Promise<void> => {
   try {
     const { name, imageUrl } = req.body;
-
-    // 🛡️ THE FIX: Ab 'any' ki zaroorat nahi. Token guarantee de raha hai.
     const userId = req.user!.userId;
 
     if (!name) {
@@ -27,29 +25,26 @@ export const createWorkspace = async (
         data: {
           workspaceId: newWorkspace.id,
           userId: userId,
-          role: "OWNER", // Creator is always the owner
-        },
-      });
-
-      await tx.channel.create({
-        data: {
-          name: "general",
-          workspaceId: newWorkspace.id,
-          type: "PUBLIC",
+          role: "OWNER",
         },
       });
 
       return newWorkspace;
     });
 
-    res.status(201).json(workspace);
+    const workspaceWithOwner = {
+      ...workspace,
+      ownerId: userId,
+    };
+
+    res.status(201).json(workspaceWithOwner);
   } catch (error) {
     console.error("❌ Workspace Creation Failed:", error);
     res.status(500).json({ error: "Internal Server Error" });
   }
 };
 
-// 2. GET USER'S WORKSPACES
+// 2. GET USER'S WORKSPACES (THE DATA EXPOSURE FIX)
 export const getUserWorkspaces = async (
   req: AuthenticatedRequest,
   res: Response,
@@ -63,12 +58,24 @@ export const getUserWorkspaces = async (
           some: { userId: userId },
         },
       },
-      // 🛡️ THE FIX: 'include: { channels: true }' REMOVED.
-      // Hum payload chota rakh rahe hain. Channels alag API se lazy-load honge.
+      include: {
+        members: {
+          where: { role: "OWNER" },
+          select: { userId: true, role: true },
+        },
+      },
       orderBy: { createdAt: "asc" },
     });
 
-    res.status(200).json(workspaces);
+    const formattedWorkspaces = workspaces.map((ws) => {
+      const ownerRecord = ws.members.find((m) => m.role === "OWNER");
+      return {
+        ...ws,
+        ownerId: ownerRecord ? ownerRecord.userId : null,
+      };
+    });
+
+    res.status(200).json(formattedWorkspaces);
   } catch (error) {
     console.error("❌ Fetching Workspaces Failed:", error);
     res.status(500).json({ error: "Internal Server Error" });
@@ -117,13 +124,14 @@ export const joinWorkspace = async (
   }
 };
 
-// 4. GET WORKSPACE MEMBERS
+// 4. GET WORKSPACE MEMBERS (THE BACKEND AMNESIA FIX)
 export const getWorkspaceMembers = async (
   req: AuthenticatedRequest,
   res: Response,
 ): Promise<void> => {
   try {
     const workspaceId = req.params.workspaceId as string;
+    // currentUserId ki zaroorat nahi rahi kyunke hum ab direct sender track kar rahe hain
 
     const workspace = await prisma.workspace.findUnique({
       where: { id: workspaceId },
@@ -143,12 +151,83 @@ export const getWorkspaceMembers = async (
       return;
     }
 
-    // 🛡️ Data map karo taake sirf User objects frontend par jayein
-    const members = workspace.members.map((m) => m.user);
+    // 🚀 THE FIX: 'receiverId' wali invalid query hata di gayi hai.
+    // Ab hum strictly check kar rahe hain ke is user ne DB mein aakhri message kab bheja tha.
+    const membersWithTime = await Promise.all(
+      workspace.members.map(async (m) => {
+        const lastMessage = await prisma.message.findFirst({
+          where: { senderId: m.user.id }, // 🟢 Sirf valid column use kiya hai
+          orderBy: { createdAt: "desc" },
+          select: { createdAt: true },
+        });
 
-    res.status(200).json(members);
+        return {
+          ...m.user,
+          // React Frontend isko trigger karke list sort kar lega
+          lastMessageAt: lastMessage ? lastMessage.createdAt : null,
+        };
+      }),
+    );
+
+    res.status(200).json(membersWithTime);
   } catch (error) {
     console.error("❌ Fetching Workspace Members Failed:", error);
+    res.status(500).json({ error: "Internal Server Error" });
+  }
+};
+
+// 5. DELETE WORKSPACE (BULLETPROOF RBAC & CASCADE FIX)
+export const deleteWorkspace = async (
+  req: AuthenticatedRequest,
+  res: Response,
+): Promise<void> => {
+  try {
+    const workspaceId = req.params.workspaceId as string;
+    const userId = req.user!.userId;
+
+    // SECURITY CHECK: Sirf Owner delete kar sakta hai
+    const memberRecord = await prisma.workspaceMember.findUnique({
+      where: { userId_workspaceId: { userId, workspaceId } },
+    });
+
+    if (!memberRecord || memberRecord.role !== "OWNER") {
+      res.status(403).json({
+        error:
+          "Strictly Restricted: Only the Workspace Owner can delete this workspace.",
+      });
+      return;
+    }
+
+    // BULLETPROOF DELETE: Manual cascade in a transaction
+    await prisma.$transaction(async (tx) => {
+      // 1. Find all channels to delete their dependencies
+      const channels = await tx.channel.findMany({ where: { workspaceId } });
+      const channelIds = channels.map((c) => c.id);
+
+      if (channelIds.length > 0) {
+        // Wipe messages and channel members
+        await tx.message.deleteMany({
+          where: { channelId: { in: channelIds } },
+        });
+        await tx.channelMember.deleteMany({
+          where: { channelId: { in: channelIds } },
+        });
+        // Wipe channels
+        await tx.channel.deleteMany({ where: { workspaceId } });
+      }
+
+      // Wipe workspace members
+      await tx.workspaceMember.deleteMany({ where: { workspaceId } });
+
+      // Finally, delete the workspace
+      await tx.workspace.delete({ where: { id: workspaceId } });
+    });
+
+    res
+      .status(200)
+      .json({ success: true, message: "Workspace completely deleted." });
+  } catch (error) {
+    console.error("❌ Workspace Deletion Failed:", error);
     res.status(500).json({ error: "Internal Server Error" });
   }
 };

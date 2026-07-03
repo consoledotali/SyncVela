@@ -49,7 +49,6 @@ export const SocketProvider = ({ children }: { children: React.ReactNode }) => {
       console.log("🟢 Frontend Connected to WebSocket Engine");
       setIsConnected(true);
 
-      // 🛡️ THE RACE CONDITION FIX: Delay the flush by 1 second
       setTimeout(() => {
         const { pendingQueue, removePendingMessage, updateMessageStatus } =
           useChatStore.getState();
@@ -71,6 +70,75 @@ export const SocketProvider = ({ children }: { children: React.ReactNode }) => {
         }
       }, 1000);
     });
+
+    // ==========================================
+    // 🚀 THE PRODUCTION SOCKET LISTENERS (SECURITY & RENDER FIX)
+    // ==========================================
+
+    socketInstance.on("receivePrivateMessage", (message: any) => {
+      const { user } = useAuthStore.getState();
+      const { updateUserActivity, addMessage, incrementUnread, selectedUser } =
+        useChatStore.getState();
+
+      // 🛡️ MASSIVE PRIVACY FIX: Identity Check
+      if (
+        !user ||
+        (message.receiverId !== user.id && message.senderId !== user.id)
+      ) {
+        return;
+      }
+
+      const currentTime = new Date().toISOString();
+
+      // 🟢 THE BLANK MESSAGE FIX: Contextual Rendering
+      const isCurrentlyViewing =
+        selectedUser &&
+        (selectedUser.id === message.senderId ||
+          selectedUser.id === message.receiverId);
+      if (isCurrentlyViewing) {
+        addMessage(message);
+      }
+
+      // 1. Agar main RECEIVER hoon
+      if (message.receiverId === user.id) {
+        updateUserActivity(message.senderId, currentTime);
+
+        if (selectedUser?.id !== message.senderId) {
+          incrementUnread(message.senderId);
+        }
+      }
+      // 2. Agar main SENDER hoon
+      else if (message.senderId === user.id) {
+        updateUserActivity(message.receiverId, currentTime);
+      }
+    });
+
+    socketInstance.on("receiveChannelMessage", (message: any) => {
+      const {
+        updateChannelActivity,
+        addMessage,
+        incrementChannelUnread,
+        activeChannelId,
+      } = useChatStore.getState();
+
+      if (!message.channelId) return;
+
+      const currentTime = new Date().toISOString();
+
+      // 🟢 BLANK MESSAGE FIX FOR CHANNELS
+      const isChannelViewing = activeChannelId === message.channelId;
+      if (isChannelViewing) {
+        addMessage(message);
+      }
+
+      updateChannelActivity(message.channelId, currentTime);
+
+      if (!isChannelViewing) {
+        incrementChannelUnread(message.channelId);
+      }
+    });
+
+    // ==========================================
 
     // 🟡 SILENT TOKEN REFRESH INTERCEPTOR
     socketInstance.on("connect_error", async (err) => {
@@ -104,8 +172,6 @@ export const SocketProvider = ({ children }: { children: React.ReactNode }) => {
         } catch (error) {
           console.error("❌ Refresh token strictly failed. Wiping state.");
           useAuthStore.getState().logout();
-
-          // 🛡️ THE FIX: Force redirect to NEW auth route if completely dead
           router.push("/auth/login");
         }
       }
@@ -119,9 +185,14 @@ export const SocketProvider = ({ children }: { children: React.ReactNode }) => {
     setSocket(socketInstance);
 
     return () => {
+      socketInstance.off("receivePrivateMessage");
+      socketInstance.off("receiveChannelMessage");
+      socketInstance.off("connect");
+      socketInstance.off("connect_error");
+      socketInstance.off("disconnect");
       socketInstance.disconnect();
     };
-  }, [isAuthenticated, router]);
+  }, [isAuthenticated, router, token]);
 
   return (
     <SocketContext.Provider value={{ socket, isConnected }}>

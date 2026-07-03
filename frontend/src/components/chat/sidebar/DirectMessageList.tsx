@@ -9,16 +9,52 @@ import {
 import { Badge } from "@/src/components/ui/badge";
 
 export default function DirectMessageList() {
-  const { users, selectedUser, setSelectedUser, onlineUsers, unreadCounts } =
-    useChatStore();
+  const {
+    users,
+    selectedUser,
+    setSelectedUser,
+    onlineUsers,
+    unreadCounts,
+    clearUnread,
+  } = useChatStore();
   const { socket } = useSocket();
 
-  const handleUserSelect = (targetUser: SidebarUser) => {
+  const handleUserSelect = (targetUser: any) => {
     setSelectedUser(targetUser);
+    clearUnread(targetUser.id);
     if (socket) {
       socket.emit("joinPrivateChat", targetUser.id);
     }
   };
+
+  // 🟢 THE PRODUCTION ENGINE: Time -> Maximum Volume -> Alphabetical
+  const sortedUsers = [...users].sort((a: any, b: any) => {
+    const timeA = a.lastMessageAt ? new Date(a.lastMessageAt).getTime() : 0;
+    const timeB = b.lastMessageAt ? new Date(b.lastMessageAt).getTime() : 0;
+
+    const aCount =
+      unreadCounts[a.id] !== undefined
+        ? unreadCounts[a.id]
+        : a.unreadCount || 0;
+    const bCount =
+      unreadCounts[b.id] !== undefined
+        ? unreadCounts[b.id]
+        : b.unreadCount || 0;
+
+    // 🏆 RULE 1: Chronological Time (Agar backend bhej de ya socket zinda ho)
+    if (timeA !== timeB && (timeA > 0 || timeB > 0)) {
+      return timeB - timeA;
+    }
+
+    // 🏆 RULE 2: The Volume Tie-Breaker (Yeh 5 vs 1 ko fix karega)
+    // Jiske paas zyada count hai (e.g., 5 is greater than 1), usay force karke TOP par lao
+    if (aCount !== bCount) {
+      return bCount - aCount;
+    }
+
+    // 🏆 RULE 3: Strict Alphabetical A-Z (Agar time bhi nahi aur dono ka count bhi barabar hai)
+    return a.name.localeCompare(b.name);
+  });
 
   return (
     <div className="mb-4">
@@ -29,17 +65,23 @@ export default function DirectMessageList() {
       </div>
 
       <div className="flex flex-col gap-0.5 pb-4">
-        {users.length === 0 ? (
+        {sortedUsers.length === 0 ? (
           <p className="text-[11px] text-muted-foreground px-2 py-1 italic">
             No team members found.
           </p>
         ) : (
-          users.map((u) => {
+          sortedUsers.map((u: any) => {
             const isOnline = onlineUsers.includes(u.id);
             const isSelected = selectedUser?.id === u.id;
+
+            const storeCount = unreadCounts[u.id];
+            const count =
+              storeCount !== undefined ? storeCount : u.unreadCount || 0;
+            const isUnread = count > 0 && !isSelected;
+
             const initials = u.name
               .split(" ")
-              .map((n) => n[0])
+              .map((n: string) => n[0])
               .join("")
               .toUpperCase()
               .substring(0, 2);
@@ -50,8 +92,10 @@ export default function DirectMessageList() {
                 onClick={() => handleUserSelect(u)}
                 className={`flex justify-between items-center px-2 py-1.5 rounded-md cursor-pointer transition-colors ${
                   isSelected
-                    ? "bg-primary/10 text-primary"
-                    : "hover:bg-muted/60"
+                    ? "bg-primary/10 text-primary font-bold"
+                    : isUnread
+                      ? "hover:bg-muted/60 text-foreground font-bold"
+                      : "hover:bg-muted/60 text-muted-foreground font-medium"
                 }`}
               >
                 <div className="flex items-center gap-2 overflow-hidden">
@@ -60,27 +104,26 @@ export default function DirectMessageList() {
                       <AvatarImage
                         src={`https://api.dicebear.com/7.x/initials/svg?seed=${u.name}`}
                       />
-                      <AvatarFallback className="text-[8px] rounded-sm">
+                      <AvatarFallback className="text-[8px] rounded-sm text-foreground/70 bg-muted-foreground/20">
                         {initials}
                       </AvatarFallback>
                     </Avatar>
                     <span
-                      className={`absolute -bottom-0.5 -right-0.5 w-2 h-2 rounded-full border border-background ${isOnline ? "bg-green-500" : "bg-transparent"}`}
+                      className={`absolute -bottom-0.5 -right-0.5 w-[9px] h-[9px] rounded-full border-[1.5px] border-[#f8f9fa] ${isOnline ? "bg-green-500" : "bg-transparent"}`}
                     ></span>
                   </div>
                   <span
-                    className={`text-sm truncate ${isSelected ? "font-semibold" : "text-muted-foreground hover:text-foreground"}`}
+                    className={`text-sm truncate ${isUnread ? "font-bold text-foreground" : "hover:text-foreground"}`}
                   >
                     {u.name}
                   </span>
                 </div>
-
-                {unreadCounts[u.id] > 0 && (
+                {isUnread && (
                   <Badge
                     variant="destructive"
-                    className="h-4 min-w-4 flex items-center justify-center rounded-full px-1 text-[9px] shrink-0"
+                    className="h-4 min-w-4 flex items-center justify-center rounded-full px-1 text-[9px] shrink-0 font-bold"
                   >
-                    {unreadCounts[u.id]}
+                    {count}
                   </Badge>
                 )}
               </div>
