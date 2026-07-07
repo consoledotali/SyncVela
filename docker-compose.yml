@@ -1,0 +1,52 @@
+services:
+  postgres:
+    image: postgres:15-alpine
+    container_name: syncvela-db
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: rootpassword # Apna secure password rakh lena
+      POSTGRES_DB: syncvela
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    networks:
+      - syncvela-network
+
+  backend:
+    build:
+      context: ./backend
+    container_name: syncvela-backend
+    env_file:
+      - ./backend/.env
+    environment:
+      - DATABASE_URL=postgresql://postgres:rootpassword@postgres:5432/syncvela?schema=public
+      - FRONTEND_URL=http://localhost:3000
+    ports:
+      - "5000:5000"
+    depends_on:
+      - postgres
+    networks:
+      - syncvela-network
+
+  frontend:
+    build:
+      context: ./frontend
+    container_name: syncvela-frontend
+    env_file:
+      - ./frontend/.env.local
+    environment:
+      - NEXT_PUBLIC_API_URL=http://localhost:5000
+    ports:
+      - "3000:3000"
+    depends_on:
+      - backend
+    networks:
+      - syncvela-network
+
+networks:
+  syncvela-network:
+    driver: bridge
+
+volumes:
+  postgres_data:
