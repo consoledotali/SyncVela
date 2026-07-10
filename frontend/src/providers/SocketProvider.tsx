@@ -23,6 +23,7 @@ export const SocketProvider = ({ children }: { children: React.ReactNode }) => {
   const [socket, setSocket] = useState<Socket | null>(null);
   const [isConnected, setIsConnected] = useState(false);
 
+  // 🟢 THE FIX: Removed 'user' dependency. This provider strictly handles sockets.
   const { token, isAuthenticated } = useAuthStore();
 
   useEffect(() => {
@@ -72,7 +73,7 @@ export const SocketProvider = ({ children }: { children: React.ReactNode }) => {
     });
 
     // ==========================================
-    // 🚀 THE PRODUCTION SOCKET LISTENERS (SECURITY & RENDER FIX)
+    // 🚀 THE PRODUCTION SOCKET LISTENERS
     // ==========================================
 
     socketInstance.on("receivePrivateMessage", (message: any) => {
@@ -80,7 +81,6 @@ export const SocketProvider = ({ children }: { children: React.ReactNode }) => {
       const { updateUserActivity, addMessage, incrementUnread, selectedUser } =
         useChatStore.getState();
 
-      // 🛡️ MASSIVE PRIVACY FIX: Identity Check
       if (
         !user ||
         (message.receiverId !== user.id && message.senderId !== user.id)
@@ -90,7 +90,6 @@ export const SocketProvider = ({ children }: { children: React.ReactNode }) => {
 
       const currentTime = new Date().toISOString();
 
-      // 🟢 THE BLANK MESSAGE FIX: Contextual Rendering
       const isCurrentlyViewing =
         selectedUser &&
         (selectedUser.id === message.senderId ||
@@ -99,16 +98,13 @@ export const SocketProvider = ({ children }: { children: React.ReactNode }) => {
         addMessage(message);
       }
 
-      // 1. Agar main RECEIVER hoon
       if (message.receiverId === user.id) {
         updateUserActivity(message.senderId, currentTime);
 
         if (selectedUser?.id !== message.senderId) {
           incrementUnread(message.senderId);
         }
-      }
-      // 2. Agar main SENDER hoon
-      else if (message.senderId === user.id) {
+      } else if (message.senderId === user.id) {
         updateUserActivity(message.receiverId, currentTime);
       }
     });
@@ -125,7 +121,6 @@ export const SocketProvider = ({ children }: { children: React.ReactNode }) => {
 
       const currentTime = new Date().toISOString();
 
-      // 🟢 BLANK MESSAGE FIX FOR CHANNELS
       const isChannelViewing = activeChannelId === message.channelId;
       if (isChannelViewing) {
         addMessage(message);

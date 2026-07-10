@@ -1,24 +1,36 @@
-FROM node:20-alpine
-
+# -----------------------------------
+# STAGE 1: BUILDER
+# -----------------------------------
+FROM node:20-alpine AS builder
 WORKDIR /app
 
-# Sirf package files copy karo taake cache faida de
 COPY package*.json ./
 COPY prisma ./prisma/
 
 RUN npm install
 
-# Prisma schema ko generate karo
+# Prisma Schema generate karo
 RUN npx prisma generate
 
-# Ab baqi code copy karo (.dockerignore kachra rok lega)
 COPY . .
 
-# TypeScript ko JavaScript (dist folder) mein compile karo
-# WARNING: Ensure karo ke backend/package.json mein "build": "tsc" script mojood ho!
+# TypeScript ko compile karo
 RUN npm run build
+
+# -----------------------------------
+# STAGE 2: RUNNER (Production)
+# -----------------------------------
+FROM node:20-alpine AS runner
+WORKDIR /app
+
+ENV NODE_ENV production
+
+# Sirf zaroori modules aur compiled JS files (dist) copy karo
+COPY --from=builder /app/package*.json ./
+COPY --from=builder /app/node_modules ./node_modules
+COPY --from=builder /app/prisma ./prisma
+COPY --from=builder /app/dist ./dist
 
 EXPOSE 5000
 
-# Production mein strictly compiled JS chalti hai, ts-node nahi
 CMD ["node", "dist/server.js"]

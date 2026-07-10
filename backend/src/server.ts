@@ -13,7 +13,7 @@ import channelRoutes from "./routes/channelRoutes";
 import messageRoutes from "./routes/messageRoutes";
 
 // Socket Engine Import
-import { initSocket } from "./sockets";
+import { initSocket } from "./sockets/index";
 
 dotenv.config();
 
@@ -21,7 +21,10 @@ const app: Application = express();
 const server = http.createServer(app);
 
 // Initialize WebSockets
-initSocket(server);
+const io = initSocket(server);
+
+// 🟢 THE ENTERPRISE FIX: Bind Socket.io instance to Express global state
+app.set("io", io);
 
 // Middleware
 app.use(

@@ -1,4 +1,7 @@
+"use client";
+
 import React, { useState } from "react";
+import { useRouter, usePathname } from "next/navigation"; // 🔴 THE FIX: Imports
 import { X, Loader2, Briefcase } from "lucide-react";
 import { Button } from "@/src/components/ui/button";
 import { Input } from "@/src/components/ui/input";
@@ -17,6 +20,8 @@ export default function CreateWorkspaceModal({
   const [name, setName] = useState("");
   const [isLoading, setIsLoading] = useState(false);
 
+  const router = useRouter();
+  const pathname = usePathname();
   const { token } = useAuthStore();
   const {
     workspaces,
@@ -48,12 +53,22 @@ export default function CreateWorkspaceModal({
         // 1. Update the store with the new workspace
         setWorkspaces([...workspaces, newWorkspace]);
 
+        // 🚀 THE MEMORY WIPE FIX: Naye workspace mein shift hone se pehle purana kachra saaf karo
+        useChatStore.getState().setChannels([]);
+        useChatStore.getState().setUsers([]);
+        useChatStore.getState().setMessages([]);
+
         // 2. Clear current channel UI & Switch to the new workspace immediately
         setActiveChannelId(null);
         setActiveWorkspaceId(newWorkspace.id);
 
         setName("");
         onClose();
+
+        // 🚀 THE ESCAPE FIX: Agar user onboarding jail mein tha, toh usay azaad karo
+        if (pathname === "/create-workspace") {
+          router.push("/");
+        }
       } else {
         const err = await response.json();
         alert(err.error || "Failed to create workspace");
