@@ -1,4 +1,5 @@
 import { useEffect } from "react";
+import { useRouter } from "next/navigation";
 import { useChatStore } from "@/src/store/chat";
 import { useAuthStore } from "@/src/store/authStore";
 
@@ -6,6 +7,7 @@ export const useWorkspaceInit = () => {
   const { token, isAuthenticated } = useAuthStore();
   const { setWorkspaces, setActiveWorkspaceId, activeWorkspaceId } =
     useChatStore();
+  const router = useRouter();
 
   // ==========================================
   // 🚀 1. THE FETCH & HYDRATION ENGINE
@@ -24,6 +26,14 @@ export const useWorkspaceInit = () => {
 
         if (response.ok) {
           const data = await response.json();
+
+          // 🚀 THE ONBOARDING REDIRECT (Strict Lock)
+          // Agar user ke paas 0 workspaces hain, toh seedha form par bhejo
+          if (data.length === 0) {
+            router.replace("/create-workspace");
+            return; // Execution yahin rok do taake aage ka kachra na chale
+          }
+
           setWorkspaces(data);
 
           if (data.length > 0) {
@@ -42,7 +52,7 @@ export const useWorkspaceInit = () => {
               // Purani workspace ko zinda karo
               setActiveWorkspaceId(savedWorkspaceId);
             } else {
-              // Agar user pehli dafa aaya hai ya purani workspace delete ho chuki hai, toh fallback to 0
+              // Agar user pehli dafa aaya hai ya purani workspace delete ho chuki hai, toh fallback to index 0
               setActiveWorkspaceId(data[0].id);
               localStorage.setItem("lastActiveWorkspaceId", data[0].id);
             }
@@ -54,7 +64,7 @@ export const useWorkspaceInit = () => {
     };
 
     fetchWorkspaces();
-  }, [token, isAuthenticated, setWorkspaces, setActiveWorkspaceId]);
+  }, [token, isAuthenticated, setWorkspaces, setActiveWorkspaceId, router]);
 
   // ==========================================
   // 🚀 2. THE INTENT TRACKER (Saves instantly)

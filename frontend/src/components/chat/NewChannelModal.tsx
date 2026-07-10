@@ -1,9 +1,12 @@
+"use client";
+
 import React, { useState } from "react";
 import { X, Loader2, Hash, Lock } from "lucide-react";
 import { Button } from "@/src/components/ui/button";
 import { Input } from "@/src/components/ui/input";
 import { useChatStore } from "@/src/store/chat";
 import { useAuthStore } from "@/src/store/authStore";
+import { useSocket } from "@/src/providers/SocketProvider";
 
 interface NewChannelModalProps {
   isOpen: boolean;
@@ -20,6 +23,7 @@ export default function NewChannelModal({
 
   const { token } = useAuthStore();
   const { activeWorkspaceId, channels, setChannels } = useChatStore();
+  const { socket } = useSocket();
 
   if (!isOpen) return null;
 
@@ -44,7 +48,13 @@ export default function NewChannelModal({
 
       if (response.ok) {
         const newChannel = await response.json();
-        setChannels([...channels, newChannel]); // 🛡️ Store update (No refresh needed)
+        setChannels([...channels, newChannel]);
+
+        // 🚀 THE REAL-TIME FIX: Dynamically join the newly created channel's room!
+        if (socket) {
+          socket.emit("join_channel", newChannel.id);
+        }
+
         setName("");
         onClose();
       } else {

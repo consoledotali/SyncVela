@@ -82,7 +82,7 @@ export const getUserWorkspaces = async (
   }
 };
 
-// 3. JOIN WORKSPACE VIA INVITE CODE
+// 3. JOIN WORKSPACE VIA INVITE CODE (THE SAFE SOCKET EXTRACTION)
 export const joinWorkspace = async (
   req: AuthenticatedRequest,
   res: Response,
@@ -107,13 +107,30 @@ export const joinWorkspace = async (
       return;
     }
 
-    await prisma.workspaceMember.create({
+    const newMemberRecord = await prisma.workspaceMember.create({
       data: {
         workspaceId: workspace.id,
         userId: userId,
         role: "MEMBER",
       },
+      include: {
+        user: {
+          select: { id: true, name: true, email: true, avatarUrl: true },
+        },
+      },
     });
+
+    // 🚀 THE CLEAN ARCHITECTURE FIX: Fetch io directly from the app state
+    const io = req.app.get("io");
+
+    if (io) {
+      io.to(workspace.id).emit("workspace_member_joined", {
+        workspaceId: workspace.id,
+        user: newMemberRecord.user,
+      });
+    } else {
+      console.error("⚠️ WebSocket instance not found in Express App State!");
+    }
 
     res
       .status(200)
@@ -124,14 +141,13 @@ export const joinWorkspace = async (
   }
 };
 
-// 4. GET WORKSPACE MEMBERS (THE BACKEND AMNESIA FIX)
+// 4. GET WORKSPACE MEMBERS
 export const getWorkspaceMembers = async (
   req: AuthenticatedRequest,
   res: Response,
 ): Promise<void> => {
   try {
     const workspaceId = req.params.workspaceId as string;
-    // currentUserId ki zaroorat nahi rahi kyunke hum ab direct sender track kar rahe hain
 
     const workspace = await prisma.workspace.findUnique({
       where: { id: workspaceId },
@@ -151,19 +167,16 @@ export const getWorkspaceMembers = async (
       return;
     }
 
-    // 🚀 THE FIX: 'receiverId' wali invalid query hata di gayi hai.
-    // Ab hum strictly check kar rahe hain ke is user ne DB mein aakhri message kab bheja tha.
     const membersWithTime = await Promise.all(
       workspace.members.map(async (m) => {
         const lastMessage = await prisma.message.findFirst({
-          where: { senderId: m.user.id }, // 🟢 Sirf valid column use kiya hai
+          where: { senderId: m.user.id },
           orderBy: { createdAt: "desc" },
           select: { createdAt: true },
         });
 
         return {
           ...m.user,
-          // React Frontend isko trigger karke list sort kar lega
           lastMessageAt: lastMessage ? lastMessage.createdAt : null,
         };
       }),
@@ -176,7 +189,7 @@ export const getWorkspaceMembers = async (
   }
 };
 
-// 5. DELETE WORKSPACE (BULLETPROOF RBAC & CASCADE FIX)
+// 5. DELETE WORKSPACE
 export const deleteWorkspace = async (
   req: AuthenticatedRequest,
   res: Response,
@@ -185,7 +198,6 @@ export const deleteWorkspace = async (
     const workspaceId = req.params.workspaceId as string;
     const userId = req.user!.userId;
 
-    // SECURITY CHECK: Sirf Owner delete kar sakta hai
     const memberRecord = await prisma.workspaceMember.findUnique({
       where: { userId_workspaceId: { userId, workspaceId } },
     });
@@ -198,28 +210,21 @@ export const deleteWorkspace = async (
       return;
     }
 
-    // BULLETPROOF DELETE: Manual cascade in a transaction
     await prisma.$transaction(async (tx) => {
-      // 1. Find all channels to delete their dependencies
       const channels = await tx.channel.findMany({ where: { workspaceId } });
       const channelIds = channels.map((c) => c.id);
 
       if (channelIds.length > 0) {
-        // Wipe messages and channel members
         await tx.message.deleteMany({
           where: { channelId: { in: channelIds } },
         });
         await tx.channelMember.deleteMany({
           where: { channelId: { in: channelIds } },
         });
-        // Wipe channels
         await tx.channel.deleteMany({ where: { workspaceId } });
       }
 
-      // Wipe workspace members
       await tx.workspaceMember.deleteMany({ where: { workspaceId } });
-
-      // Finally, delete the workspace
       await tx.workspace.delete({ where: { id: workspaceId } });
     });
 
