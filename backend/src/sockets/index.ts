@@ -1,6 +1,9 @@
 import { Server } from "socket.io";
 import { Server as HttpServer } from "http";
-import { socketAuthMiddleware, AuthenticatedSocket } from "../middlewares/authMiddleware";
+import {
+  socketAuthMiddleware,
+  AuthenticatedSocket,
+} from "../middlewares/authMiddleware";
 import { handleChatEvents } from "./chatHandler";
 
 const onlineUsers = new Set<string>();
@@ -27,10 +30,19 @@ export const initSocket = (server: HttpServer) => {
       socket.broadcast.emit("userOnline", userId);
     }
 
-    // 🛡️ SECURITY FIX: Request engine mapping
     socket.on("requestOnlineUsers", () => {
       socket.emit("getOnlineUsers", Array.from(onlineUsers));
     });
+
+    // ==========================================
+    // 🚀 THE FATAL MISSING PIECE: WORKSPACE ROOM
+    // Iske bina koi real-time broadcast kaam nahi karega!
+    // ==========================================
+    socket.on("join_workspace", (workspaceId) => {
+      socket.join(workspaceId);
+      console.log(`🏢 User ${userId} joined workspace room: ${workspaceId}`);
+    });
+    // ==========================================
 
     handleChatEvents(io, authSocket);
 
