@@ -20,7 +20,7 @@ const ALLOWED_MIME_TYPES = [
   "application/pdf",
 ];
 
-const MAX_FILE_SIZE = 5 * 1024 * 1024; // 5MB Limit (Optional concept for frontend validation reminder)
+const MAX_FILE_SIZE = 50 * 1024 * 1024; // 50MB Limit (Optional concept for frontend validation reminder)
 
 export const generatePresignedUrl = async (
   req: Request,
