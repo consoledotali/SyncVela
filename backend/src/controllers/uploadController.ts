@@ -11,49 +11,41 @@ const s3Client = new S3Client({
   },
 });
 
-// 🛡️ SECURITY FIX: The Whitelist
-const ALLOWED_MIME_TYPES = [
-  "image/jpeg",
-  "image/png",
-  "image/webp",
-  "image/gif",
-  "application/pdf",
-];
-
-const MAX_FILE_SIZE = 50 * 1024 * 1024; // 50MB Limit (Optional concept for frontend validation reminder)
+const MAX_FILE_SIZE = 100 * 1024 * 1024; // 100MB Strict Limit
 
 export const generatePresignedUrl = async (
   req: Request,
   res: Response,
 ): Promise<void> => {
   try {
-    const { filename, contentType } = req.body;
+    const { filename, contentType, fileSize } = req.body;
 
-    if (!filename || !contentType) {
+    if (!filename || fileSize === undefined) {
       res
         .status(400)
-        .json({ error: "Filename and contentType are strictly required" });
+        .json({ error: "Filename and fileSize are strictly required." });
       return;
     }
 
-    // 🛡️ SECURITY FIX: Abort if format is not allowed
-    if (!ALLOWED_MIME_TYPES.includes(contentType)) {
-      res.status(415).json({
-        error: "Unsupported file format. Only Images and PDFs are allowed.",
-      });
+    if (fileSize > MAX_FILE_SIZE) {
+      res.status(413).json({ error: "File exceeds the strict 100MB limit." });
       return;
     }
 
-    const uniqueFileKey = `chat-attachments/${Date.now()}-${filename.replace(/[^a-zA-Z0-9.-]/g, "")}`; // Sanitized filename
+    // 🚀 THE SLACK FIX: Accept ALL formats. 
+    // Agar browser format na bhej paye, toh usay raw binary treat karo.
+    const finalContentType = contentType || "application/octet-stream";
+
+    const uniqueFileKey = `chat-attachments/${Date.now()}-${filename.replace(/[^a-zA-Z0-9.-]/g, "")}`;
 
     const command = new PutObjectCommand({
       Bucket: process.env.DO_SPACES_BUCKET as string,
       Key: uniqueFileKey,
-      ContentType: contentType,
+      ContentType: finalContentType,
       ACL: "public-read",
     });
 
-    const uploadUrl = await getSignedUrl(s3Client, command, { expiresIn: 120 }); // Reduced to 2 mins for security
+    const uploadUrl = await getSignedUrl(s3Client, command, { expiresIn: 120 });
 
     res.json({
       uploadUrl,

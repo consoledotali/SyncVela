@@ -3,6 +3,15 @@
 // ==========================================
 export type MessageStatus = "pending" | "sent" | "delivered" | "read";
 
+// 🚀 THE NEW ENTERPRISE TYPE: Relational Attachment
+export interface Attachment {
+  id?: string;
+  url: string;
+  fileName: string;
+  mimeType: string;
+  size: number;
+}
+
 export interface Workspace {
   id: string;
   name: string;
@@ -25,7 +34,8 @@ export interface Message {
   createdAt: string;
   status?: MessageStatus;
   tempId?: string;
-  attachmentUrl?: string | null;
+  attachmentUrl?: string | null; // For backward compatibility with old messages
+  attachments?: Attachment[]; // 🚀 THE AMNESIA FIX: Ab data drop nahi hoga
   sender?: { id: string; name: string; avatarUrl?: string | null };
 }
 

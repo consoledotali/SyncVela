@@ -2,7 +2,7 @@ import { Response } from "express";
 import prisma from "../config/db";
 import { AuthenticatedRequest } from "./channelController";
 
-// 1. GET CHANNEL MESSAGES (With Secure Cursor Pagination)
+// 1. GET CHANNEL MESSAGES
 export const getChannelMessages = async (
   req: AuthenticatedRequest,
   res: Response,
@@ -19,27 +19,22 @@ export const getChannelMessages = async (
       cursor: cursor ? { id: cursor } : undefined,
       orderBy: { createdAt: "desc" },
       include: {
-        sender: {
-          select: { id: true, name: true, avatarUrl: true },
-        },
+        sender: { select: { id: true, name: true, avatarUrl: true } },
+        attachments: true, // 🚀 STRICT EXTRACTION
       },
     });
 
     const hasMore = messages.length === LIMIT;
     const nextCursor = hasMore ? messages[messages.length - 1].id : null;
 
-    res.status(200).json({
-      messages: messages.reverse(),
-      hasMore,
-      nextCursor,
-    });
+    res.status(200).json({ messages: messages.reverse(), hasMore, nextCursor });
   } catch (error) {
     console.error("❌ [BACKEND] Fetching Channel History Failed:", error);
     res.status(500).json({ error: "Internal Server Error" });
   }
 };
 
-// 2. GET DIRECT MESSAGES (With Secure Cursor Pagination & Read State)
+// 2. GET DIRECT MESSAGES
 export const getDirectMessages = async (
   req: AuthenticatedRequest,
   res: Response,
@@ -56,13 +51,11 @@ export const getDirectMessages = async (
       cursor: cursor ? { id: cursor } : undefined,
       orderBy: { createdAt: "desc" },
       include: {
-        sender: {
-          select: { id: true, name: true, avatarUrl: true },
-        },
+        sender: { select: { id: true, name: true, avatarUrl: true } },
+        attachments: true, // 🚀 STRICT EXTRACTION
       },
     });
 
-    // 🛡️ THE ARCHITECTURE FIX: Fetch participant read states
     const participants = await prisma.participant.findMany({
       where: { conversationId },
       select: { userId: true, lastReadAt: true },
@@ -75,7 +68,7 @@ export const getDirectMessages = async (
       messages: messages.reverse(),
       hasMore,
       nextCursor,
-      participants, // 🟢 YEH MISSING THA! Iske bina Blue Ticks nahi chalenge.
+      participants,
     });
   } catch (error) {
     console.error("❌ [BACKEND] Fetching DM History Failed:", error);

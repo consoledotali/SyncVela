@@ -62,7 +62,7 @@ model User {
 }
 
 // ------------------------------------------------------
-// WORKSPACE ARCHITECTURE (New Multi-Tenant Engine)
+// WORKSPACE ARCHITECTURE (Multi-Tenant Engine)
 // ------------------------------------------------------
 model Workspace {
   id         String   @id @default(cuid())
@@ -97,7 +97,7 @@ model WorkspaceMember {
 }
 
 // ------------------------------------------------------
-// CHANNEL ARCHITECTURE (New)
+// CHANNEL ARCHITECTURE
 // ------------------------------------------------------
 model Channel {
   id        String      @id @default(cuid())
@@ -136,7 +136,7 @@ model ChannelMember {
 }
 
 // ------------------------------------------------------
-// DM CONVERSATION MODELS (Existing)
+// DM CONVERSATION MODELS
 // ------------------------------------------------------
 model Conversation {
   id            String   @id @default(cuid())
@@ -171,14 +171,13 @@ model Participant {
 }
 
 // ------------------------------------------------------
-// MESSAGE MODEL (Updated for Slack Architecture)
+// MESSAGE MODEL (Enterprise Slack Architecture)
 // ------------------------------------------------------
 model Message {
-  id            String   @id @default(cuid())
-  sequenceId    Int      @unique @default(autoincrement())
-  content       String?
-  attachmentUrl String?
-  createdAt     DateTime @default(now())
+  id         String   @id @default(cuid())
+  sequenceId Int      @unique @default(autoincrement())
+  content    String?
+  createdAt  DateTime @default(now())
 
   senderId String
   sender   User   @relation(fields: [senderId], references: [id], onDelete: Cascade)
@@ -189,8 +188,30 @@ model Message {
   channelId String?
   channel   Channel? @relation(fields: [channelId], references: [id], onDelete: Cascade)
 
+  // 🚀 THE INDUSTRY STANDARD RELATION: 1 Message can have many Rich Attachments
+  attachments Attachment[]
+
   @@index([conversationId])
   @@index([channelId])
   @@index([senderId])
   @@map("messages")
+}
+
+// ------------------------------------------------------
+// ATTACHMENT MODEL (Rich Metadata Storage)
+// ------------------------------------------------------
+model Attachment {
+  id        String   @id @default(cuid())
+  url       String
+  fileName  String
+  mimeType  String
+  size      Int
+  createdAt DateTime @default(now())
+
+  // Relation mapping to parent message
+  messageId String
+  message   Message @relation(fields: [messageId], references: [id], onDelete: Cascade)
+
+  @@index([messageId])
+  @@map("attachments")
 }
