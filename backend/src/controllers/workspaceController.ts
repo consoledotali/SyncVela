@@ -242,3 +242,145 @@ export const deleteWorkspace = async (
     res.status(500).json({ error: "Internal Server Error" });
   }
 };
+
+// 6. UPDATE WORKSPACE MEMBER ROLE (RBAC Enforced)
+export const updateWorkspaceMemberRole = async (
+  req: AuthenticatedRequest,
+  res: Response,
+): Promise<void> => {
+  try {
+    // 🚀 THE FIX: Cast explicitly to string to stop type union leakage
+    const workspaceId = req.body.workspaceId as string;
+    const targetUserId = req.body.targetUserId as string;
+    const newRole = req.body.newRole as string;
+    const currentUserId = req.user!.userId;
+
+    if (!workspaceId || !targetUserId || !newRole) {
+      res.status(400).json({
+        error: "Missing required fields: workspaceId, targetUserId, newRole",
+      });
+      return;
+    }
+
+    if (!["ADMIN", "MEMBER", "GUEST"].includes(newRole)) {
+      res.status(400).json({
+        error: "Invalid role assignment. Allowed values: ADMIN, MEMBER, GUEST",
+      });
+      return;
+    }
+
+    const auth = await authorizeRBAC(
+      currentUserId,
+      workspaceId,
+      "MANAGE_WORKSPACE",
+    );
+    if (!auth.allowed) {
+      res.status(403).json({ error: auth.reason });
+      return;
+    }
+
+    const targetMember = await prisma.workspaceMember.findUnique({
+      where: { userId_workspaceId: { userId: targetUserId, workspaceId } },
+    });
+
+    if (targetMember?.role === "OWNER") {
+      res.status(400).json({
+        error: "System Lock: Workspace Owner's role cannot be modified.",
+      });
+      return;
+    }
+
+    const updatedMember = await prisma.workspaceMember.update({
+      where: { userId_workspaceId: { userId: targetUserId, workspaceId } },
+      data: { role: newRole as any }, // Cast to any or your Prisma Enum type
+      include: { user: { select: { id: true, name: true } } },
+    });
+
+    const io = req.app.get("io");
+    if (io) {
+      io.to(workspaceId).emit("member_role_updated", {
+        workspaceId,
+        userId: targetUserId,
+        newRole,
+      });
+    }
+
+    res.status(200).json({
+      success: true,
+      message: `Successfully promoted ${updatedMember.user.name} to ${newRole}`,
+    });
+  } catch (error) {
+    console.error("❌ Failed to update member role:", error);
+    res.status(500).json({ error: "Internal Server Error" });
+  }
+};
+
+// 7. KICK MEMBER FROM WORKSPACE (RBAC Enforced)
+export const removeWorkspaceMember = async (
+  req: AuthenticatedRequest,
+  res: Response,
+): Promise<void> => {
+  try {
+    const workspaceId = req.params.workspaceId as string;
+    const targetUserId = req.params.userId as string;
+    const currentUserId = req.user!.userId;
+
+    const auth = await authorizeRBAC(
+      currentUserId,
+      workspaceId,
+      "MANAGE_WORKSPACE",
+    );
+    if (!auth.allowed) {
+      res.status(403).json({ error: auth.reason });
+      return;
+    }
+
+    const targetMember = await prisma.workspaceMember.findUnique({
+      where: { userId_workspaceId: { userId: targetUserId, workspaceId } },
+    });
+
+    if (!targetMember) {
+      res.status(404).json({ error: "Member not found in this workspace." });
+      return;
+    }
+
+    if (targetMember.role === "OWNER") {
+      res
+        .status(400)
+        .json({ error: "System Lock: You cannot kick the Workspace Owner." });
+      return;
+    }
+
+    await prisma.$transaction(async (tx) => {
+      const channels = await tx.channel.findMany({ where: { workspaceId } });
+      const channelIds = channels.map((c) => c.id);
+
+      if (channelIds.length > 0) {
+        await tx.channelMember.deleteMany({
+          where: { channelId: { in: channelIds }, userId: targetUserId },
+        });
+      }
+
+      await tx.workspaceMember.delete({
+        where: { userId_workspaceId: { userId: targetUserId, workspaceId } },
+      });
+    });
+
+    const io = req.app.get("io");
+    if (io) {
+      io.to(workspaceId).emit("member_kicked", {
+        workspaceId,
+        userId: targetUserId,
+      });
+      io.to(targetUserId).emit("workspace_revoked", workspaceId);
+    }
+
+    res.status(200).json({
+      success: true,
+      message: "Member successfully removed from workspace.",
+    });
+  } catch (error) {
+    console.error("❌ Failed to kick member:", error);
+    res.status(500).json({ error: "Internal Server Error" });
+  }
+};

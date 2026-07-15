@@ -1,7 +1,7 @@
 import React, { useState } from "react";
 import { useSocket } from "@/src/providers/SocketProvider";
 import { useChatStore } from "@/src/store/chat";
-import { usePermissions } from "@/src/hooks/usePermissions"; // 🚀 THE RBAC ENGINE IMPORT
+import { usePermissions } from "@/src/hooks/usePermissions";
 import {
   Avatar,
   AvatarFallback,
@@ -26,9 +26,9 @@ export default function MessageBubble({
     deleteMessage,
     editMessage,
     onlineUsers,
+    users, // 🚀 THE ROSTER (Active workspace members)
   } = useChatStore();
 
-  // 🚀 THE GOD MODE CHECK
   const { hasPermission } = usePermissions();
 
   const [isEditing, setIsEditing] = useState(false);
@@ -39,10 +39,9 @@ export default function MessageBubble({
     ? onlineUsers.includes(selectedUser.id)
     : false;
 
-  // 🛡️ PERMISSIONS EVALUATION (Clean & Readable)
   const canModerate = hasPermission("MANAGE_MESSAGES");
-  const canDelete = isMe || (isChannelView && canModerate); // Owner can delete anyone's message in a channel
-  const canEdit = isMe; // Editing is strictly self-only, even God can't edit someone else's words
+  const canDelete = isMe || (isChannelView && canModerate);
+  const canEdit = isMe;
 
   const senderName = msg.sender?.name || (isMe ? "You" : "User");
   const initials = senderName.substring(0, 2).toUpperCase();
@@ -51,7 +50,12 @@ export default function MessageBubble({
     minute: "2-digit",
   });
 
-  // 🚀 STRICT RELATIONAL EXTRACTION
+  // 🚀 THE FORMER MEMBER DETECTOR
+  // Agar message mera nahi hai, aur sender ka ID hamare active users ki list mein nahi hai,
+  // iska matlab wo is workspace se nikal diya gaya hai.
+  const isFormerMember =
+    !isMe && msg.sender && !users.some((u) => u.id === msg.sender.id);
+
   const attachments = Array.isArray(msg.attachments) ? msg.attachments : [];
 
   const mediaFiles = attachments.filter((att: any) => {
@@ -67,7 +71,7 @@ export default function MessageBubble({
   });
 
   const handleDelete = () => {
-    if (!socket || !canDelete) return; // Strict execution block
+    if (!socket || !canDelete) return;
     deleteMessage(msg.id);
     socket.emit("delete_message", {
       messageId: msg.id,
@@ -78,7 +82,12 @@ export default function MessageBubble({
   };
 
   const handleEditSubmit = () => {
-    if (!socket || !canEdit || editText.trim() === "" || editText === msg.text) {
+    if (
+      !socket ||
+      !canEdit ||
+      editText.trim() === "" ||
+      editText === msg.text
+    ) {
       setIsEditing(false);
       return;
     }
@@ -108,7 +117,6 @@ export default function MessageBubble({
     <div
       className={`relative group flex gap-3 pr-6 pl-4 hover:bg-muted/40 transition-colors duration-150 border-l-[3px] border-transparent hover:border-primary/40 ${!hideHeader ? "mt-4 pt-1 pb-1" : "mt-[2px] pt-[2px] pb-[2px]"}`}
     >
-      {/* 🚀 DELEGATING UI CONTROL TO RBAC STATE */}
       <MessageActions
         canEdit={canEdit}
         canDelete={canDelete}
@@ -120,7 +128,9 @@ export default function MessageBubble({
 
       <div className="w-[42px] shrink-0 flex flex-col items-center select-none relative">
         {!hideHeader ? (
-          <Avatar className="h-[40px] w-[40px] border border-border rounded-md shadow-sm">
+          <Avatar
+            className={`h-[40px] w-[40px] border border-border rounded-md shadow-sm ${isFormerMember ? "opacity-50 grayscale" : ""}`}
+          >
             <AvatarImage
               src={`https://api.dicebear.com/7.x/initials/svg?seed=${senderName}`}
             />
@@ -137,11 +147,21 @@ export default function MessageBubble({
 
       <div className="flex flex-col min-w-0 flex-1">
         {!hideHeader && (
-          <div className="flex items-baseline gap-2 select-none mb-0.5">
-            <span className="font-bold text-[15px] text-foreground hover:underline cursor-pointer">
+          <div className="flex items-center gap-2 select-none mb-0.5 flex-wrap">
+            <span
+              className={`font-bold text-[15px] ${isFormerMember ? "text-muted-foreground line-through" : "text-foreground hover:underline cursor-pointer"}`}
+            >
               {senderName}
             </span>
-            <span className="text-xs text-muted-foreground font-medium">
+
+            {/* 🚀 THE ENTERPRISE DEACTIVATED BADGE */}
+            {isFormerMember && (
+              <span className="px-1.5 py-0.5 bg-destructive/10 text-destructive text-[9px] font-bold uppercase tracking-wider rounded-sm">
+                Deactivated
+              </span>
+            )}
+
+            <span className="text-xs text-muted-foreground font-medium ml-1">
               {timeString}
             </span>
             {isMe && (
@@ -186,7 +206,9 @@ export default function MessageBubble({
         ) : (
           msg.text &&
           msg.text.trim() !== "" && (
-            <p className="text-[14.5px] text-foreground/95 leading-[1.45] whitespace-pre-wrap break-words">
+            <p
+              className={`text-[14.5px] leading-[1.45] whitespace-pre-wrap break-words ${isFormerMember ? "text-muted-foreground/80 italic" : "text-foreground/95"}`}
+            >
               {msg.text}
             </p>
           )

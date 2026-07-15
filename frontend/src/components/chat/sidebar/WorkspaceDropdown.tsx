@@ -11,8 +11,10 @@ import {
   Plus,
   Trash2,
   Loader2,
+  Settings,
 } from "lucide-react";
 import WorkspaceInviteModal from "./WorkspaceInviteModal";
+import ManageMembersModal from "./ManageMembersModal"; // 🚀 NEW MODAL IMPORT
 
 interface WorkspaceDropdownProps {
   onOpenCreateModal: () => void;
@@ -23,6 +25,7 @@ export default function WorkspaceDropdown({
 }: WorkspaceDropdownProps) {
   const [isOpen, setIsOpen] = useState(false);
   const [isInviteModalOpen, setIsInviteModalOpen] = useState(false);
+  const [isManageModalOpen, setIsManageModalOpen] = useState(false); // 🚀 NEW STATE
   const [isDeleting, setIsDeleting] = useState(false);
 
   const { token } = useAuthStore();
@@ -40,6 +43,7 @@ export default function WorkspaceDropdown({
   const { hasPermission } = usePermissions();
   const canInvite = hasPermission("INVITE_USERS");
   const canDelete = hasPermission("DELETE_WORKSPACE");
+  const canManageWorkspace = hasPermission("MANAGE_WORKSPACE");
 
   const handleDeleteWorkspace = async () => {
     if (!activeWorkspaceId) return;
@@ -105,7 +109,9 @@ export default function WorkspaceDropdown({
             </span>
           </div>
           <ChevronDown
-            className={`h-4 w-4 text-muted-foreground transition-transform duration-200 ${isOpen ? "rotate-180" : ""}`}
+            className={`h-4 w-4 text-muted-foreground transition-transform duration-200 ${
+              isOpen ? "rotate-180" : ""
+            }`}
           />
         </div>
 
@@ -131,7 +137,11 @@ export default function WorkspaceDropdown({
                       }
                       setIsOpen(false);
                     }}
-                    className={`px-3 py-2.5 text-sm cursor-pointer transition-colors ${w.id === activeWorkspaceId ? "bg-primary/10 text-primary font-bold" : "hover:bg-muted text-foreground font-medium"}`}
+                    className={`px-3 py-2.5 text-sm cursor-pointer transition-colors ${
+                      w.id === activeWorkspaceId
+                        ? "bg-primary/10 text-primary font-bold"
+                        : "hover:bg-muted text-foreground font-medium"
+                    }`}
                   >
                     {w.name}
                   </div>
@@ -150,6 +160,19 @@ export default function WorkspaceDropdown({
                   className="px-3 py-2 text-sm cursor-pointer hover:bg-muted text-foreground font-medium flex items-center gap-2"
                 >
                   <UserPlus className="h-4 w-4" /> Invite people
+                </div>
+              )}
+
+              {/* 🚀 THE MANAGEMENT DASHBOARD TRIGGER */}
+              {canManageWorkspace && (
+                <div
+                  onClick={() => {
+                    setIsOpen(false);
+                    setIsManageModalOpen(true);
+                  }}
+                  className="px-3 py-2 text-sm cursor-pointer hover:bg-muted text-foreground font-medium flex items-center gap-2"
+                >
+                  <Settings className="h-4 w-4" /> Manage Workspace Members
                 </div>
               )}
 
@@ -189,6 +212,12 @@ export default function WorkspaceDropdown({
           inviteCode={(activeWorkspace as any).inviteCode || ""}
         />
       )}
+
+      {/* 🚀 THE MANAGEMENT MODAL */}
+      <ManageMembersModal
+        isOpen={isManageModalOpen}
+        onClose={() => setIsManageModalOpen(false)}
+      />
     </>
   );
 }
