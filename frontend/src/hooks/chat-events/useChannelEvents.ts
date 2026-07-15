@@ -6,64 +6,62 @@ export const useChannelEvents = (socket: any) => {
     if (!socket) return;
     const chatState = useChatStore.getState;
 
-    const handleNewChannelMessage = (message: any) => {
+    const handleNewChannelMessage = (rawMessage: any) => {
       const currentChannelId = chatState().activeChannelId;
 
-      if (currentChannelId === message.channelId) {
+      if (currentChannelId === rawMessage.channelId) {
         const existingMessages = chatState().messages;
 
         const isDuplicate = existingMessages.some(
           (m) =>
-            m.id === message.id ||
-            (message.tempId &&
-              (m.tempId === message.tempId || m.id === message.tempId)) ||
-            (m.senderId === message.senderId &&
-              (m.text === message.content ||
-                (!message.content && m.text === " ")) &&
+            m.id === rawMessage.id ||
+            (rawMessage.tempId &&
+              (m.tempId === rawMessage.tempId || m.id === rawMessage.tempId)) ||
+            (m.senderId === rawMessage.senderId &&
+              (m.text === rawMessage.content ||
+                (!rawMessage.content && m.text === " ")) &&
               new Date().getTime() - new Date(m.createdAt).getTime() < 3000),
         );
 
         if (isDuplicate) {
-          if (message.tempId)
-            chatState().updateRealMessageId(message.tempId, message.id);
+          if (rawMessage.tempId)
+            chatState().updateRealMessageId(rawMessage.tempId, rawMessage.id);
           return;
         }
 
+        // 🚀 THE FIX: Standardize payload
         chatState().addMessage({
-          id: message.id,
-          text: message.content,
-          senderId: message.senderId,
-          createdAt: message.createdAt,
-          attachmentUrl: message.attachmentUrl,
-          sender: message.sender,
+          id: rawMessage.id,
+          text: rawMessage.content || "",
+          senderId: rawMessage.senderId,
+          createdAt: rawMessage.createdAt,
+          attachments: rawMessage.attachments || [],
+          sender: rawMessage.sender,
           status: "sent",
         } as any);
 
-        socket.emit("markChannelAsRead", { channelId: message.channelId });
+        socket.emit("markChannelAsRead", { channelId: rawMessage.channelId });
       } else {
-        chatState().incrementChannelUnread(message.channelId);
+        chatState().incrementChannelUnread(rawMessage.channelId);
       }
     };
 
-    // 🟢 THE RADAR FIX: Naya channel receive karna
     const handleAddedToChannel = (channel: any) => {
       const state = chatState();
       const currentChannels = state.channels;
 
       if (!currentChannels.find((c: any) => c.id === channel.id)) {
         state.setChannels([...currentChannels, { ...channel, unreadCount: 0 }]);
-
-        // Background mein automatically socket room join karo
         socket.emit("join_channel", channel.id);
       }
     };
 
     socket.on("receive_channel_message", handleNewChannelMessage);
-    socket.on("added_to_channel", handleAddedToChannel); // 🟢 BIND
+    socket.on("added_to_channel", handleAddedToChannel);
 
     return () => {
       socket.off("receive_channel_message", handleNewChannelMessage);
-      socket.off("added_to_channel", handleAddedToChannel); // 🟢 UNBIND
+      socket.off("added_to_channel", handleAddedToChannel);
     };
   }, [socket]);
 };

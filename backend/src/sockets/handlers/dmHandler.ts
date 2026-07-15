@@ -36,15 +36,15 @@ export const registerDMHandlers = (
 
   socket.on("sendPrivateMessage", async (payload: any, callback: any) => {
     try {
-      const { roomId, targetUserId, text, attachmentUrl, tempId } = payload;
+      const { roomId, targetUserId, text, attachments, tempId } = payload;
       const textData = text || payload.content;
 
       const hasText = textData && textData.trim() !== "";
-      const hasAttachment = attachmentUrl && attachmentUrl.trim() !== "";
+      const hasAttachments =
+        Array.isArray(attachments) && attachments.length > 0;
 
-      if (!targetUserId || (!hasText && !hasAttachment)) return;
+      if (!targetUserId || (!hasText && !hasAttachments)) return;
 
-      // 🛡️ THE BULLETPROOF FIX: Verify if the room actually exists in DB
       let validConversationId = roomId;
 
       if (roomId) {
@@ -52,14 +52,9 @@ export const registerDMHandlers = (
           where: { id: roomId },
           select: { id: true },
         });
-
-        // Agar DB wipe ho gaya tha aur frontend purana ID bhej raha hai
-        if (!existingConvo) {
-          validConversationId = null;
-        }
+        if (!existingConvo) validConversationId = null;
       }
 
-      // Agar room invalid tha ya pehli dafa chat ho rahi hai, toh naya room dhundo/banao
       if (!validConversationId) {
         let fallbackConvo = await prisma.conversation.findFirst({
           where: {
@@ -84,22 +79,29 @@ export const registerDMHandlers = (
         validConversationId = fallbackConvo.id;
       }
 
-      // 🚀 Now create the message with a 100% guaranteed valid ID
       const savedMessage = await prisma.message.create({
         data: {
           content: hasText ? textData.trim() : null,
-          attachmentUrl: hasAttachment ? attachmentUrl : null,
           senderId: userId,
-          conversationId: validConversationId, // ✅ FKEY CRASH PREVENTED
+          conversationId: validConversationId,
+          attachments: hasAttachments
+            ? {
+                create: attachments.map((att: any) => ({
+                  url: att.url,
+                  fileName: att.fileName || "attachment",
+                  mimeType: att.mimeType || "application/octet-stream",
+                  size: att.size || 0,
+                })),
+              }
+            : undefined,
         },
         include: {
           sender: { select: { id: true, name: true, avatarUrl: true } },
+          attachments: true,
         },
       });
 
       const broadcastPayload = { ...savedMessage, tempId };
-
-      // Emit to both users
       socket.emit("receiveMessage", broadcastPayload);
       io.to(targetUserId).emit("receiveMessage", broadcastPayload);
 
@@ -109,7 +111,10 @@ export const registerDMHandlers = (
 
       if (callback) callback({ status: "ok", realId: savedMessage.id, tempId });
     } catch (error) {
-      console.error("\n❌❌❌ [DM] PRISMA DATABASE CRASH ❌❌❌", error);
+      console.error(
+        "\n❌❌❌ [DM] PRISMA RELATIONAL DATABASE CRASH ❌❌❌",
+        error,
+      );
       if (callback) callback({ error: "Failed to send private message" });
     }
   });
@@ -125,8 +130,6 @@ export const registerDMHandlers = (
           },
           data: { lastReadAt: serverReadTime },
         });
-
-        // 🔵 CLOCK SKEW FIX: Sending absolute server time
         io.to(payload.targetUserId).emit("messagesRead", {
           roomId: payload.roomId,
           readAt: serverReadTime.toISOString(),

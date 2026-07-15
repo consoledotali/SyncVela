@@ -23,7 +23,6 @@ export const SocketProvider = ({ children }: { children: React.ReactNode }) => {
   const [socket, setSocket] = useState<Socket | null>(null);
   const [isConnected, setIsConnected] = useState(false);
 
-  // 🟢 THE FIX: Removed 'user' dependency. This provider strictly handles sockets.
   const { token, isAuthenticated } = useAuthStore();
 
   useEffect(() => {
@@ -39,9 +38,7 @@ export const SocketProvider = ({ children }: { children: React.ReactNode }) => {
     const socketInstance = io(
       process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000",
       {
-        auth: {
-          token: token,
-        },
+        auth: { token: token },
       },
     );
 
@@ -71,69 +68,6 @@ export const SocketProvider = ({ children }: { children: React.ReactNode }) => {
         }
       }, 1000);
     });
-
-    // ==========================================
-    // 🚀 THE PRODUCTION SOCKET LISTENERS
-    // ==========================================
-
-    socketInstance.on("receivePrivateMessage", (message: any) => {
-      const { user } = useAuthStore.getState();
-      const { updateUserActivity, addMessage, incrementUnread, selectedUser } =
-        useChatStore.getState();
-
-      if (
-        !user ||
-        (message.receiverId !== user.id && message.senderId !== user.id)
-      ) {
-        return;
-      }
-
-      const currentTime = new Date().toISOString();
-
-      const isCurrentlyViewing =
-        selectedUser &&
-        (selectedUser.id === message.senderId ||
-          selectedUser.id === message.receiverId);
-      if (isCurrentlyViewing) {
-        addMessage(message);
-      }
-
-      if (message.receiverId === user.id) {
-        updateUserActivity(message.senderId, currentTime);
-
-        if (selectedUser?.id !== message.senderId) {
-          incrementUnread(message.senderId);
-        }
-      } else if (message.senderId === user.id) {
-        updateUserActivity(message.receiverId, currentTime);
-      }
-    });
-
-    socketInstance.on("receiveChannelMessage", (message: any) => {
-      const {
-        updateChannelActivity,
-        addMessage,
-        incrementChannelUnread,
-        activeChannelId,
-      } = useChatStore.getState();
-
-      if (!message.channelId) return;
-
-      const currentTime = new Date().toISOString();
-
-      const isChannelViewing = activeChannelId === message.channelId;
-      if (isChannelViewing) {
-        addMessage(message);
-      }
-
-      updateChannelActivity(message.channelId, currentTime);
-
-      if (!isChannelViewing) {
-        incrementChannelUnread(message.channelId);
-      }
-    });
-
-    // ==========================================
 
     // 🟡 SILENT TOKEN REFRESH INTERCEPTOR
     socketInstance.on("connect_error", async (err) => {
@@ -179,9 +113,8 @@ export const SocketProvider = ({ children }: { children: React.ReactNode }) => {
 
     setSocket(socketInstance);
 
+    // 🚀 CLEARED DEAD & REDUNDANT EVENT LISTENERS
     return () => {
-      socketInstance.off("receivePrivateMessage");
-      socketInstance.off("receiveChannelMessage");
       socketInstance.off("connect");
       socketInstance.off("connect_error");
       socketInstance.off("disconnect");

@@ -51,7 +51,7 @@ export default function ChatArea() {
   const isDMView = !!selectedUser;
 
   // ==========================================
-  // 🚀 1. SYNCHRONOUS DOM ANCHOR (Pagination)
+  // 🚀 1. SYNCHRONOUS DOM ANCHOR (Pagination Fix)
   // ==========================================
   useLayoutEffect(() => {
     if (isPrependingRef.current && scrollContainerRef.current) {
@@ -64,10 +64,12 @@ export default function ChatArea() {
         if (anchorElement) {
           container.scrollTop = anchorElement.offsetTop - 10;
         } else {
-          container.scrollTop = container.scrollHeight - prevScrollHeightRef.current;
+          container.scrollTop =
+            container.scrollHeight - prevScrollHeightRef.current;
         }
       } else {
-        container.scrollTop = container.scrollHeight - prevScrollHeightRef.current;
+        container.scrollTop =
+          container.scrollHeight - prevScrollHeightRef.current;
       }
 
       isPrependingRef.current = false;
@@ -75,11 +77,17 @@ export default function ChatArea() {
     }
   }, [messages]);
 
+  // ==========================================
+  // 🚀 2. SCROLL LISTENER (The Slack Threshold)
+  // ==========================================
   const handleScroll = async () => {
     if (!scrollContainerRef.current || !token) return;
-    const { scrollTop, scrollHeight, clientHeight } = scrollContainerRef.current;
+    const { scrollTop, scrollHeight, clientHeight } =
+      scrollContainerRef.current;
 
-    isUserScrolledUpRef.current = scrollHeight - scrollTop - clientHeight > 10;
+    // 🟢 THE FIX: 100px Slack Leeway Threshold
+    // Agar user 100px se zyada upar hai tabhi usay "Scrolled Up" mano.
+    isUserScrolledUpRef.current = scrollHeight - scrollTop - clientHeight > 100;
 
     if (scrollTop === 0 && hasMore && !isLoadingMore && nextCursor) {
       if (messages.length > 0) {
@@ -114,11 +122,14 @@ export default function ChatArea() {
             senderId: msg.senderId,
             createdAt: msg.createdAt,
             attachmentUrl: msg.attachmentUrl,
+            attachments: msg.attachments || [],
             sender: msg.sender,
           }));
 
-          const remoteHasMore = data.hasMore !== undefined ? data.hasMore : false;
-          const remoteCursor = data.nextCursor !== undefined ? data.nextCursor : null;
+          const remoteHasMore =
+            data.hasMore !== undefined ? data.hasMore : false;
+          const remoteCursor =
+            data.nextCursor !== undefined ? data.nextCursor : null;
 
           prependMessages(formattedHistoricalMessages);
           setPagination(remoteHasMore, remoteCursor);
@@ -134,73 +145,54 @@ export default function ChatArea() {
   };
 
   // ==========================================
-  // 🚀 2. CHANNEL SWITCH RESET (THE AMNESIA FIX)
+  // 🚀 3. CHANNEL SWITCH RESET
   // ==========================================
   useEffect(() => {
     const container = scrollContainerRef.current;
     if (container) {
       isUserScrolledUpRef.current = false;
-      // 🔴 THE FATAL FLAW FIXED: Resetting to null so Block 3 knows it's a First Load.
       lastMessageIdRef.current = null;
     }
   }, [activeChannelId, activeRoomId]);
 
   // ==========================================
-  // 🚀 3. SMART AUTO-SCROLL (The Bulletproof Engine)
+  // 🚀 4. THE BULLETPROOF AUTO-SCROLL ENGINE
   // ==========================================
   useEffect(() => {
-    let t1: NodeJS.Timeout, t2: NodeJS.Timeout;
     const container = scrollContainerRef.current;
+    if (!container || messages.length === 0 || isPrependingRef.current) return;
 
-    if (container && messages.length > 0) {
-      const currentLastMessageId = messages[messages.length - 1].id;
+    const currentLastMessage = messages[messages.length - 1];
 
-      if (
-        lastMessageIdRef.current !== currentLastMessageId &&
-        !isPrependingRef.current
-      ) {
-        const isFirstLoad = lastMessageIdRef.current === null;
+    if (lastMessageIdRef.current !== currentLastMessage.id) {
+      const isFirstLoad = lastMessageIdRef.current === null;
+      const isMyMessage = currentLastMessage.senderId === user?.id;
 
-        if (
-          !isUserScrolledUpRef.current ||
-          messages[messages.length - 1].senderId === user?.id
-        ) {
-          // 🟢 THE FIX: DOM Node targeting instead of raw scrollHeight math
-          const forceScroll = () => {
-            const anchor = container.querySelector("#chat-bottom-anchor");
-            if (anchor) {
-              anchor.scrollIntoView({
-                behavior: isFirstLoad ? "auto" : "smooth",
-                block: "end",
-              });
-            } else {
-              container.scrollTop = container.scrollHeight;
-            }
-          };
+      // Slack Core Logic:
+      // 1. Agar first load hai, scroll it.
+      // 2. Agar user ne khud bheja hai, hamesha scroll it.
+      // 3. Agar user bottom ke qareeb hai aur naya message aaya hai, scroll it.
+      if (isFirstLoad || isMyMessage || !isUserScrolledUpRef.current) {
+        const forceScrollBottom = () => {
+          container.scrollTop = container.scrollHeight;
+        };
 
-          // Attempt 1: Instant try
-          forceScroll();
-          
-          // Attempt 2: 100ms delay (Standard React render time)
-          t1 = setTimeout(forceScroll, 100);
-          
-          // Attempt 3: 400ms delay (Safety net for heavy DOM paints)
-          t2 = setTimeout(forceScroll, 400);
-        }
-        lastMessageIdRef.current = currentLastMessageId;
+        // 1st Hit: Instant Synchronous Scroll
+        forceScrollBottom();
+
+        // 2nd Hit: DOM Paint Catch (requestAnimationFrame is industry standard here)
+        requestAnimationFrame(() => {
+          forceScrollBottom();
+          // 3rd Hit: Final fallback for heavy DOM renders (like images taking a split second)
+          setTimeout(forceScrollBottom, 150);
+        });
       }
-    } else if (container && messages.length === 0) {
-      lastMessageIdRef.current = null;
+      lastMessageIdRef.current = currentLastMessage.id;
     }
-
-    return () => {
-      if (t1) clearTimeout(t1);
-      if (t2) clearTimeout(t2);
-    };
   }, [messages, user?.id]);
 
   // ==========================================
-  // 🚀 4. THE LAYOUT SHIFT ENGINE (Images Fix)
+  // 🚀 5. RESIZE OBSERVER (Dynamic Content Fix)
   // ==========================================
   useEffect(() => {
     const container = scrollContainerRef.current;
@@ -208,10 +200,8 @@ export default function ChatArea() {
     if (!container || !inner) return;
 
     const observer = new ResizeObserver(() => {
-      if (!isPrependingRef.current) {
-        if (!isUserScrolledUpRef.current) {
-          container.scrollTop = container.scrollHeight;
-        }
+      if (!isPrependingRef.current && !isUserScrolledUpRef.current) {
+        container.scrollTop = container.scrollHeight;
       }
     });
 
@@ -220,14 +210,14 @@ export default function ChatArea() {
   }, [activeChannelId, activeRoomId]);
 
   // ==========================================
-  // 🚀 5. TYPING INDICATOR SHIFT
+  // 🚀 6. TYPING INDICATOR SHIFT
   // ==========================================
   useEffect(() => {
     const container = scrollContainerRef.current;
     if (container && isCurrentlyTyping && !isUserScrolledUpRef.current) {
-      setTimeout(() => {
-        container.scrollTo({ top: container.scrollHeight, behavior: "smooth" });
-      }, 50);
+      requestAnimationFrame(() => {
+        container.scrollTop = container.scrollHeight;
+      });
     }
   }, [isCurrentlyTyping]);
 
