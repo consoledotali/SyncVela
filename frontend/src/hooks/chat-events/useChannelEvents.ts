@@ -29,7 +29,6 @@ export const useChannelEvents = (socket: any) => {
           return;
         }
 
-        // 🚀 THE FIX: Standardize payload
         chatState().addMessage({
           id: rawMessage.id,
           text: rawMessage.content || "",
@@ -46,6 +45,7 @@ export const useChannelEvents = (socket: any) => {
       }
     };
 
+    // 🟢 THE INVITE RADAR
     const handleAddedToChannel = (channel: any) => {
       const state = chatState();
       const currentChannels = state.channels;
@@ -56,12 +56,33 @@ export const useChannelEvents = (socket: any) => {
       }
     };
 
+    // 🚀 THE REAL-TIME CREATION RADAR FIX
+    const handleChannelCreated = (channel: any) => {
+      const state = chatState();
+
+      // Ensure user is currently in the same workspace before adding the channel
+      if (state.activeWorkspaceId === channel.workspaceId) {
+        const currentChannels = state.channels;
+        if (!currentChannels.find((c: any) => c.id === channel.id)) {
+          state.setChannels([
+            ...currentChannels,
+            { ...channel, unreadCount: 0 },
+          ]);
+          socket.emit("join_channel", channel.id);
+        }
+      }
+    };
+
+    // BIND LISTENERS
     socket.on("receive_channel_message", handleNewChannelMessage);
     socket.on("added_to_channel", handleAddedToChannel);
+    socket.on("channel_created", handleChannelCreated);
 
     return () => {
+      // UNBIND LISTENERS
       socket.off("receive_channel_message", handleNewChannelMessage);
       socket.off("added_to_channel", handleAddedToChannel);
+      socket.off("channel_created", handleChannelCreated);
     };
   }, [socket]);
 };

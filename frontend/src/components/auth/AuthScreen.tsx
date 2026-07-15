@@ -28,19 +28,19 @@ export function AuthScreen({
   const isInitiallyLogin = defaultMode === "login";
 
   // ==========================================
-  // 🚀 THE FIX: SMART REDIRECT ENGINE
+  // 🚀 THE FIX: SMART REDIRECT ENGINE (Strictly sync with localStorage)
   // ==========================================
   useEffect(() => {
     if (isAuthenticated) {
-      // Check karo ke kya user kisi invite link se aaya tha?
-      const pendingInviteUrl = sessionStorage.getItem("redirectAfterLogin");
+      // 🛡️ THE BUG KILLER: Use the exact same key that InvitePage uses!
+      const pendingInviteUrl = localStorage.getItem("pendingInvite");
 
       if (pendingInviteUrl) {
-        // Invite link mojood hai. Pehle memory saaf karo, phir wapas invite page par bhejo
-        sessionStorage.removeItem("redirectAfterLogin");
+        // Invite link mil gaya! Cache saaf karo aur user ko uski manzil par bhejo
+        localStorage.removeItem("pendingInvite");
         router.push(pendingInviteUrl);
       } else {
-        // Normal login hai, seedha dashboard/chat par bhejo
+        // Normal login, seedha dashboard
         router.push("/");
       }
     }
@@ -74,7 +74,7 @@ export function AuthScreen({
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Google Auth Failed");
 
-      // 🛡️ Yahan se manual router.push hata diya hai taake upar wala useEffect control sambhal le
+      // Yeh state update trigger karega aur upar wala useEffect user ko theek jagah route kar dega
       login(data.user, data.accessToken);
     } catch (err: any) {
       console.error("❌ Google Login Failed:", err.message);
@@ -85,11 +85,9 @@ export function AuthScreen({
 
   return (
     <div className="relative min-h-screen bg-zinc-50 flex flex-col justify-center items-center p-4 overflow-hidden">
-      {/* Subtle Enterprise Grid Background */}
       <div className="absolute inset-0 bg-[linear-gradient(to_right,#e5e7eb_1px,transparent_1px),linear-gradient(to_bottom,#e5e7eb_1px,transparent_1px)] bg-[size:24px_24px] [mask-image:radial-gradient(ellipse_60%_50%_at_50%_0%,#000_70%,transparent_100%)]" />
 
       <div className="relative z-10 w-full max-w-[380px]">
-        {/* Minimal Brand Header */}
         <div className="text-center mb-4">
           <h1 className="text-2xl font-bold tracking-tight text-zinc-900">
             SyncVela

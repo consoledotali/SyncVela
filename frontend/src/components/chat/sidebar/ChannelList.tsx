@@ -4,6 +4,7 @@ import { useAuthStore } from "@/src/store/authStore";
 import { useSocket } from "@/src/providers/SocketProvider";
 import { Hash, Lock, Plus } from "lucide-react";
 import { Badge } from "@/src/components/ui/badge";
+import { usePermissions } from "@/src/hooks/usePermissions"; // 🚀 THE RBAC ENGINE IMPORT
 
 interface ChannelListProps {
   onOpenModal: () => void;
@@ -20,6 +21,11 @@ export default function ChannelList({ onOpenModal }: ChannelListProps) {
 
   const { token } = useAuthStore();
   const { socket } = useSocket();
+
+  // 🛡️ THE CLEAN UI GATEKEEPER
+  // Sirf hook se poocho ke permission hai ya nahi, no spaghetti logic!
+  const { hasPermission } = usePermissions();
+  const canCreateChannel = hasPermission("CREATE_CHANNEL");
 
   const handleChannelSelect = async (channel: Channel) => {
     setActiveChannelId(channel.id);
@@ -60,17 +66,14 @@ export default function ChannelList({ onOpenModal }: ChannelListProps) {
         ? channelUnreadCounts[b.id]
         : b.unreadCount || 0;
 
-    // RULE 1: Chronological Time
     if (timeA !== timeB && (timeA > 0 || timeB > 0)) {
       return timeB - timeA;
     }
 
-    // RULE 2: Highest Unread Volume Wins (Fixes count ties)
     if (aCount !== bCount) {
       return bCount - aCount;
     }
 
-    // RULE 3: Alphabetical Lock
     return a.name.localeCompare(b.name);
   });
 
@@ -80,13 +83,16 @@ export default function ChannelList({ onOpenModal }: ChannelListProps) {
         <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
           Channels
         </h3>
-        <button
-          onClick={onOpenModal}
-          className="text-muted-foreground hover:text-foreground transition-colors p-1"
-          title="Create Channel"
-        >
-          <Plus className="h-4 w-4" />
-        </button>
+        {/* 🛡️ CONDITIONALLY RENDER BASED ON RBAC */}
+        {canCreateChannel && (
+          <button
+            onClick={onOpenModal}
+            className="text-muted-foreground hover:text-foreground transition-colors p-1"
+            title="Create Channel"
+          >
+            <Plus className="h-4 w-4" />
+          </button>
+        )}
       </div>
 
       <div className="flex flex-col gap-0.5">

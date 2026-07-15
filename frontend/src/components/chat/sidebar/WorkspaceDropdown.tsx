@@ -3,6 +3,7 @@
 import React, { useState } from "react";
 import { useChatStore } from "@/src/store/chat";
 import { useAuthStore } from "@/src/store/authStore";
+import { usePermissions } from "@/src/hooks/usePermissions"; // 🚀 RBAC IMPORT
 import {
   MessageSquare,
   ChevronDown,
@@ -10,7 +11,7 @@ import {
   Plus,
   Trash2,
   Loader2,
-} from "lucide-react"; // 🟢 Added Trash2 and Loader2
+} from "lucide-react";
 import WorkspaceInviteModal from "./WorkspaceInviteModal";
 
 interface WorkspaceDropdownProps {
@@ -22,9 +23,9 @@ export default function WorkspaceDropdown({
 }: WorkspaceDropdownProps) {
   const [isOpen, setIsOpen] = useState(false);
   const [isInviteModalOpen, setIsInviteModalOpen] = useState(false);
-  const [isDeleting, setIsDeleting] = useState(false); // 🟢 Delete loading state
+  const [isDeleting, setIsDeleting] = useState(false);
 
-  const { user, token } = useAuthStore();
+  const { token } = useAuthStore();
   const {
     workspaces,
     activeWorkspaceId,
@@ -35,23 +36,15 @@ export default function WorkspaceDropdown({
   } = useChatStore();
   const activeWorkspace = workspaces.find((w) => w.id === activeWorkspaceId);
 
-  // 🛡️ THE BULLETPROOF ROLE CHECK
-  const isOwner =
-    activeWorkspace &&
-    user &&
-    ((activeWorkspace as any).ownerId === user.id ||
-      (activeWorkspace as any).creatorId === user.id ||
-      (activeWorkspace as any).userId === user.id ||
-      (activeWorkspace as any).members?.some(
-        (m: any) => m.userId === user.id && m.role === "OWNER",
-      ));
+  // 🛡️ THE CLEAN RBAC ENGINE
+  const { hasPermission } = usePermissions();
+  const canInvite = hasPermission("INVITE_USERS");
+  const canDelete = hasPermission("DELETE_WORKSPACE");
 
-  // 🟢 DELETE WORKSPACE LOGIC
   const handleDeleteWorkspace = async () => {
     if (!activeWorkspaceId) return;
-
     const confirmDelete = window.confirm(
-      `Are you absolutely sure you want to delete "${activeWorkspace?.name}"?\nThis action cannot be undone and will erase all channels and messages.`,
+      `Are you absolutely sure you want to delete "${activeWorkspace?.name}"?\nThis action cannot be undone.`,
     );
     if (!confirmDelete) return;
 
@@ -61,25 +54,19 @@ export default function WorkspaceDropdown({
         `http://localhost:5000/api/workspaces/${activeWorkspaceId}`,
         {
           method: "DELETE",
-          headers: {
-            Authorization: `Bearer ${token}`,
-          },
+          headers: { Authorization: `Bearer ${token}` },
         },
       );
 
       if (response.ok) {
-        // Store se deleted workspace nikal do
         const updatedWorkspaces = workspaces.filter(
           (w) => w.id !== activeWorkspaceId,
         );
         setWorkspaces(updatedWorkspaces);
-
-        // State clear karo
         setActiveChannelId(null);
         setSelectedUser(null);
         setIsOpen(false);
 
-        // Kisi aur workspace par fallback karo ya null kar do
         if (updatedWorkspaces.length > 0) {
           setActiveWorkspaceId(updatedWorkspaces[0].id);
           localStorage.setItem(
@@ -144,11 +131,7 @@ export default function WorkspaceDropdown({
                       }
                       setIsOpen(false);
                     }}
-                    className={`px-3 py-2.5 text-sm cursor-pointer transition-colors ${
-                      w.id === activeWorkspaceId
-                        ? "bg-primary/10 text-primary font-bold"
-                        : "hover:bg-muted text-foreground font-medium"
-                    }`}
+                    className={`px-3 py-2.5 text-sm cursor-pointer transition-colors ${w.id === activeWorkspaceId ? "bg-primary/10 text-primary font-bold" : "hover:bg-muted text-foreground font-medium"}`}
                   >
                     {w.name}
                   </div>
@@ -157,33 +140,31 @@ export default function WorkspaceDropdown({
 
               <div className="border-t border-border mt-1 mb-1"></div>
 
-              {/* 🛡️ UI GATEKEEPER */}
-              {isOwner && (
-                <>
-                  <div
-                    onClick={() => {
-                      setIsOpen(false);
-                      setIsInviteModalOpen(true);
-                    }}
-                    className="px-3 py-2 text-sm cursor-pointer hover:bg-muted text-foreground font-medium flex items-center gap-2"
-                  >
-                    <UserPlus className="h-4 w-4" /> Invite people to{" "}
-                    {activeWorkspace?.name || "workspace"}
-                  </div>
+              {/* 🛡️ UI GATEKEEPER via Hooks */}
+              {canInvite && (
+                <div
+                  onClick={() => {
+                    setIsOpen(false);
+                    setIsInviteModalOpen(true);
+                  }}
+                  className="px-3 py-2 text-sm cursor-pointer hover:bg-muted text-foreground font-medium flex items-center gap-2"
+                >
+                  <UserPlus className="h-4 w-4" /> Invite people
+                </div>
+              )}
 
-                  {/* 🟢 NEW: Delete Workspace Option */}
-                  <div
-                    onClick={handleDeleteWorkspace}
-                    className="px-3 py-2 text-sm cursor-pointer hover:bg-red-50 text-red-600 font-medium flex items-center gap-2"
-                  >
-                    {isDeleting ? (
-                      <Loader2 className="h-4 w-4 animate-spin" />
-                    ) : (
-                      <Trash2 className="h-4 w-4" />
-                    )}
-                    Delete {activeWorkspace?.name || "workspace"}
-                  </div>
-                </>
+              {canDelete && (
+                <div
+                  onClick={handleDeleteWorkspace}
+                  className="px-3 py-2 text-sm cursor-pointer hover:bg-red-50 text-red-600 font-medium flex items-center gap-2"
+                >
+                  {isDeleting ? (
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                  ) : (
+                    <Trash2 className="h-4 w-4" />
+                  )}{" "}
+                  Delete workspace
+                </div>
               )}
 
               <div

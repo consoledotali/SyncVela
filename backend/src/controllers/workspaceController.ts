@@ -1,8 +1,9 @@
 import { Response } from "express";
 import prisma from "../config/db";
 import { AuthenticatedRequest } from "./channelController";
+import { authorizeRBAC } from "../utils/rbac";
 
-// 1. CREATE WORKSPACE (NO DEFAULT CHANNELS, REAL-TIME OWNER ID)
+// 1. CREATE WORKSPACE
 export const createWorkspace = async (
   req: AuthenticatedRequest,
   res: Response,
@@ -44,7 +45,7 @@ export const createWorkspace = async (
   }
 };
 
-// 2. GET USER'S WORKSPACES (THE DATA EXPOSURE FIX)
+// 2. GET USER'S WORKSPACES
 export const getUserWorkspaces = async (
   req: AuthenticatedRequest,
   res: Response,
@@ -54,9 +55,7 @@ export const getUserWorkspaces = async (
 
     const workspaces = await prisma.workspace.findMany({
       where: {
-        members: {
-          some: { userId: userId },
-        },
+        members: { some: { userId: userId } },
       },
       include: {
         members: {
@@ -82,7 +81,7 @@ export const getUserWorkspaces = async (
   }
 };
 
-// 3. JOIN WORKSPACE VIA INVITE CODE (THE SAFE SOCKET EXTRACTION)
+// 3. JOIN WORKSPACE VIA INVITE CODE
 export const joinWorkspace = async (
   req: AuthenticatedRequest,
   res: Response,
@@ -103,7 +102,11 @@ export const joinWorkspace = async (
 
     const isAlreadyMember = workspace.members.some((m) => m.userId === userId);
     if (isAlreadyMember) {
-      res.status(400).json({ error: "You are already in this workspace." });
+      // 🚀 THE FIX: Sending workspaceId back even on error
+      res.status(400).json({
+        error: "You are already in this workspace.",
+        workspaceId: workspace.id,
+      });
       return;
     }
 
@@ -120,7 +123,6 @@ export const joinWorkspace = async (
       },
     });
 
-    // 🚀 THE CLEAN ARCHITECTURE FIX: Fetch io directly from the app state
     const io = req.app.get("io");
 
     if (io) {
@@ -148,6 +150,14 @@ export const getWorkspaceMembers = async (
 ): Promise<void> => {
   try {
     const workspaceId = req.params.workspaceId as string;
+    const userId = req.user!.userId;
+
+    // 🚀 THE ENTERPRISE GATEKEEPER
+    const auth = await authorizeRBAC(userId, workspaceId, "VIEW_WORKSPACE");
+    if (!auth.allowed) {
+      res.status(403).json({ error: auth.reason });
+      return;
+    }
 
     const workspace = await prisma.workspace.findUnique({
       where: { id: workspaceId },
@@ -177,6 +187,7 @@ export const getWorkspaceMembers = async (
 
         return {
           ...m.user,
+          role: m.role,
           lastMessageAt: lastMessage ? lastMessage.createdAt : null,
         };
       }),
@@ -198,15 +209,10 @@ export const deleteWorkspace = async (
     const workspaceId = req.params.workspaceId as string;
     const userId = req.user!.userId;
 
-    const memberRecord = await prisma.workspaceMember.findUnique({
-      where: { userId_workspaceId: { userId, workspaceId } },
-    });
-
-    if (!memberRecord || memberRecord.role !== "OWNER") {
-      res.status(403).json({
-        error:
-          "Strictly Restricted: Only the Workspace Owner can delete this workspace.",
-      });
+    // 🚀 THE ENTERPRISE GATEKEEPER
+    const auth = await authorizeRBAC(userId, workspaceId, "DELETE_WORKSPACE");
+    if (!auth.allowed) {
+      res.status(403).json({ error: auth.reason });
       return;
     }
 

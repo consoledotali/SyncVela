@@ -11,10 +11,18 @@ export const createWorkspaceSlice: StateCreator<
   channels: [],
   activeWorkspaceId: null,
   activeChannelId: null,
+  currentUserRole: null, // 🚀 INIT
 
   setWorkspaces: (workspaces) => set({ workspaces }),
   setChannels: (channels) => set({ channels }),
-  setActiveWorkspaceId: (id) => set({ activeWorkspaceId: id }),
+
+  setActiveWorkspaceId: (id) =>
+    set({
+      activeWorkspaceId: id,
+      currentUserRole: null, // 🚀 Reset role when switching workspaces
+    }),
+
+  setCurrentUserRole: (role) => set({ currentUserRole: role }),
 
   setActiveChannelId: (id) =>
     set({
