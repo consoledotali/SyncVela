@@ -1,6 +1,7 @@
 import React, { useState } from "react";
 import { useSocket } from "@/src/providers/SocketProvider";
 import { useChatStore } from "@/src/store/chat";
+import { usePermissions } from "@/src/hooks/usePermissions"; // 🚀 THE RBAC ENGINE IMPORT
 import {
   Avatar,
   AvatarFallback,
@@ -27,6 +28,9 @@ export default function MessageBubble({
     onlineUsers,
   } = useChatStore();
 
+  // 🚀 THE GOD MODE CHECK
+  const { hasPermission } = usePermissions();
+
   const [isEditing, setIsEditing] = useState(false);
   const [editText, setEditText] = useState(msg.text || "");
 
@@ -35,6 +39,11 @@ export default function MessageBubble({
     ? onlineUsers.includes(selectedUser.id)
     : false;
 
+  // 🛡️ PERMISSIONS EVALUATION (Clean & Readable)
+  const canModerate = hasPermission("MANAGE_MESSAGES");
+  const canDelete = isMe || (isChannelView && canModerate); // Owner can delete anyone's message in a channel
+  const canEdit = isMe; // Editing is strictly self-only, even God can't edit someone else's words
+
   const senderName = msg.sender?.name || (isMe ? "You" : "User");
   const initials = senderName.substring(0, 2).toUpperCase();
   const timeString = new Date(msg.createdAt).toLocaleTimeString([], {
@@ -42,7 +51,7 @@ export default function MessageBubble({
     minute: "2-digit",
   });
 
-  // 🚀 STRICT RELATIONAL EXTRACTION (No legacy fallback)
+  // 🚀 STRICT RELATIONAL EXTRACTION
   const attachments = Array.isArray(msg.attachments) ? msg.attachments : [];
 
   const mediaFiles = attachments.filter((att: any) => {
@@ -58,7 +67,7 @@ export default function MessageBubble({
   });
 
   const handleDelete = () => {
-    if (!socket || !isMe) return;
+    if (!socket || !canDelete) return; // Strict execution block
     deleteMessage(msg.id);
     socket.emit("delete_message", {
       messageId: msg.id,
@@ -69,7 +78,7 @@ export default function MessageBubble({
   };
 
   const handleEditSubmit = () => {
-    if (!socket || !isMe || editText.trim() === "" || editText === msg.text) {
+    if (!socket || !canEdit || editText.trim() === "" || editText === msg.text) {
       setIsEditing(false);
       return;
     }
@@ -99,8 +108,10 @@ export default function MessageBubble({
     <div
       className={`relative group flex gap-3 pr-6 pl-4 hover:bg-muted/40 transition-colors duration-150 border-l-[3px] border-transparent hover:border-primary/40 ${!hideHeader ? "mt-4 pt-1 pb-1" : "mt-[2px] pt-[2px] pb-[2px]"}`}
     >
+      {/* 🚀 DELEGATING UI CONTROL TO RBAC STATE */}
       <MessageActions
-        isMe={isMe}
+        canEdit={canEdit}
+        canDelete={canDelete}
         isEditing={isEditing}
         hasText={!!msg.text}
         onEdit={() => setIsEditing(true)}

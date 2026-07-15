@@ -6,9 +6,9 @@ export type Permission =
   | "DELETE_CHANNEL"
   | "INVITE_USERS"
   | "DELETE_WORKSPACE"
-  | "MANAGE_WORKSPACE";
+  | "MANAGE_WORKSPACE"
+  | "MANAGE_MESSAGES"; // 🚀 INJECTED
 
-// 🚀 STATIC POLICY MATRIX (Mirrors Backend)
 const ROLE_PERMISSIONS: Record<string, Permission[]> = {
   OWNER: [
     "VIEW_WORKSPACE",
@@ -17,8 +17,15 @@ const ROLE_PERMISSIONS: Record<string, Permission[]> = {
     "INVITE_USERS",
     "DELETE_WORKSPACE",
     "MANAGE_WORKSPACE",
+    "MANAGE_MESSAGES", // 🚀 INJECTED
   ],
-  ADMIN: ["VIEW_WORKSPACE", "CREATE_CHANNEL", "DELETE_CHANNEL", "INVITE_USERS"],
+  ADMIN: [
+    "VIEW_WORKSPACE",
+    "CREATE_CHANNEL",
+    "DELETE_CHANNEL",
+    "INVITE_USERS",
+    "MANAGE_MESSAGES", // 🚀 INJECTED
+  ],
   MEMBER: ["VIEW_WORKSPACE"],
   GUEST: ["VIEW_WORKSPACE"],
 };

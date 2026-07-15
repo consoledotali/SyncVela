@@ -8,7 +8,8 @@ export type Permission =
   | "DELETE_CHANNEL"
   | "INVITE_USERS"
   | "DELETE_WORKSPACE"
-  | "MANAGE_WORKSPACE";
+  | "MANAGE_WORKSPACE"
+  | "MANAGE_MESSAGES"; // 🚀 GOD MODE PERMISSION
 
 // 2. 🚀 THE STATIC POLICY MATRIX (Zero DB Overhead)
 const ROLE_PERMISSIONS: Record<MemberRole, Permission[]> = {
@@ -19,12 +20,14 @@ const ROLE_PERMISSIONS: Record<MemberRole, Permission[]> = {
     "INVITE_USERS",
     "DELETE_WORKSPACE",
     "MANAGE_WORKSPACE",
+    "MANAGE_MESSAGES", // Owner can moderate
   ],
   ADMIN: [
     "VIEW_WORKSPACE",
     "CREATE_CHANNEL",
     "DELETE_CHANNEL",
     "INVITE_USERS",
+    "MANAGE_MESSAGES", // Admin can moderate
   ],
   MEMBER: ["VIEW_WORKSPACE"], // Members strictly view-only for architectural actions
   GUEST: ["VIEW_WORKSPACE"],
@@ -40,7 +43,7 @@ interface RBACResult {
 export const authorizeRBAC = async (
   userId: string,
   workspaceId: string,
-  requiredPermission: Permission
+  requiredPermission: Permission,
 ): Promise<RBACResult> => {
   const member = await prisma.workspaceMember.findUnique({
     where: { userId_workspaceId: { userId, workspaceId } },
