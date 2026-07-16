@@ -29,7 +29,6 @@ export const useDMEvents = (socket: any) => {
 
         if (response.ok) {
           const data = await response.json();
-          // 🚀 THE FIX: Strict Data Normalization
           const formattedHistory: Message[] =
             data.messages?.map((msg: any) => ({
               id: msg.id,
@@ -39,6 +38,7 @@ export const useDMEvents = (socket: any) => {
               attachments: msg.attachments || [],
               sender: msg.sender,
               status: msg.status || "delivered",
+              _count: msg._count, 
             })) || [];
 
           chatState().setMessages(formattedHistory);
@@ -59,11 +59,83 @@ export const useDMEvents = (socket: any) => {
     };
 
     const handleNewMessage = (rawMessage: any) => {
-      const currentSelectedUser = chatState().selectedUser;
-      const currentRoomId = chatState().activeRoomId;
+      const state = chatState();
+      const currentSelectedUser = state.selectedUser;
+      const currentRoomId = state.activeRoomId;
       const me = authState().user;
 
-      // 🚀 Standardization
+      if (rawMessage.parentMessageId) {
+        const isDrawerOpenForThisThread =
+          state.activeThreadParent?.id === rawMessage.parentMessageId;
+        let isDuplicate = false;
+
+        if (isDrawerOpenForThisThread) {
+          isDuplicate = state.threadMessages.some(
+            (m) =>
+              m.id === rawMessage.id ||
+              (rawMessage.tempId &&
+                (m.tempId === rawMessage.tempId || m.id === rawMessage.tempId)),
+          );
+
+          if (isDuplicate) {
+            if (rawMessage.tempId) {
+              state.updateThreadRealMessageId(rawMessage.tempId, rawMessage.id);
+            }
+          } else {
+            state.addThreadReply({
+              id: rawMessage.id,
+              text: rawMessage.content || "",
+              senderId: rawMessage.senderId,
+              createdAt: rawMessage.createdAt,
+              attachments: rawMessage.attachments || [],
+              sender: rawMessage.sender,
+              status: "read", // 🚀 The Drawer is Open, message is immediately READ locally
+            } as any);
+
+            // 🚀 Force target server to alert sender for Blue Ticks
+            socket.emit("markAsRead", { 
+              roomId: currentRoomId, 
+              targetUserId: rawMessage.senderId 
+            });
+          }
+        }
+
+        if (!isDuplicate) {
+          // 🚀 Trigger Highlight
+          state.setHighlightedMessage(rawMessage.parentMessageId);
+          setTimeout(() => {
+            useChatStore.getState().setHighlightedMessage(null);
+          }, 3000);
+
+          useChatStore.setState((prev) => ({
+            messages: prev.messages.map((m) =>
+              m.id === rawMessage.parentMessageId
+                ? { ...m, _count: { replies: (m._count?.replies || 0) + 1 } }
+                : m,
+            ),
+            activeThreadParent:
+              prev.activeThreadParent?.id === rawMessage.parentMessageId
+                ? ({
+                    ...prev.activeThreadParent,
+                    _count: {
+                      replies:
+                        (prev.activeThreadParent!._count?.replies || 0) + 1,
+                    },
+                  } as any)
+                : prev.activeThreadParent,
+          }));
+
+          if (
+            rawMessage.senderId !== me?.id &&
+            currentRoomId !== rawMessage.conversationId
+          ) {
+            state.incrementUnread(rawMessage.senderId);
+          }
+        }
+        return; 
+      }
+
+      // FLAT DM MESSAGES FLOW
       const message: Message = {
         id: rawMessage.id,
         text: rawMessage.content || "",
@@ -79,14 +151,14 @@ export const useDMEvents = (socket: any) => {
         message.senderId === me?.id
           ? currentSelectedUser?.id
           : message.senderId;
-      if (targetUserId) chatState().moveUserToTop(targetUserId);
+      if (targetUserId) state.moveUserToTop(targetUserId);
 
       if (
         currentSelectedUser?.id === message.senderId ||
         message.senderId === me?.id
       ) {
         if (message.senderId === me?.id || currentRoomId) {
-          chatState().addMessage(message);
+          state.addMessage(message);
         }
         if (currentRoomId && message.senderId !== me?.id)
           socket.emit("markAsRead", {
@@ -94,7 +166,7 @@ export const useDMEvents = (socket: any) => {
             targetUserId: message.senderId,
           });
       } else {
-        chatState().incrementUnread(message.senderId);
+        state.incrementUnread(message.senderId);
         socket.emit("markAsDelivered", {
           messageId: message.id,
           senderId: message.senderId,

@@ -10,6 +10,13 @@ export const createChatUISlice: StateCreator<ChatStore, [], [], ChatUISlice> = (
   typingUsers: [],
   targetLastReadAt: null,
 
+  activeThreadParent: null,
+  threadMessages: [],
+  isFetchingThread: false,
+
+  // 🚀 INJECT STATE
+  highlightedMessageId: null,
+
   setSelectedUser: (user) =>
     set((state) => ({
       selectedUser: user,
@@ -19,6 +26,9 @@ export const createChatUISlice: StateCreator<ChatStore, [], [], ChatUISlice> = (
       targetLastReadAt: null,
       hasMore: false,
       nextCursor: null,
+      activeThreadParent: null,
+      threadMessages: [],
+      highlightedMessageId: null,
       unreadCounts: { ...state.unreadCounts, [user?.id || ""]: 0 },
     })),
   setActiveRoomId: (id) => set({ activeRoomId: id }),
@@ -34,6 +44,27 @@ export const createChatUISlice: StateCreator<ChatStore, [], [], ChatUISlice> = (
       typingUsers: state.typingUsers.filter((id) => id !== userId),
     })),
   setTargetLastReadAt: (time) => set({ targetLastReadAt: time }),
+
+  openThread: (parent) =>
+    set({ activeThreadParent: parent, threadMessages: [] }),
+  closeThread: () => set({ activeThreadParent: null, threadMessages: [] }),
+  setThreadMessages: (replies) => set({ threadMessages: replies }),
+  addThreadReply: (reply) =>
+    set((state) => ({ threadMessages: [...state.threadMessages, reply] })),
+  setIsFetchingThread: (status) => set({ isFetchingThread: status }),
+
+  updateThreadRealMessageId: (tempId, realId) =>
+    set((state) => ({
+      threadMessages: state.threadMessages.map((msg) =>
+        msg.tempId === tempId || msg.id === tempId
+          ? { ...msg, id: realId, status: "sent" }
+          : msg,
+      ),
+    })),
+
+  // 🚀 INJECT ACTION
+  setHighlightedMessage: (messageId) =>
+    set({ highlightedMessageId: messageId }),
 
   resetChat: () =>
     set({
@@ -52,5 +83,9 @@ export const createChatUISlice: StateCreator<ChatStore, [], [], ChatUISlice> = (
       nextCursor: null,
       isLoadingMore: false,
       targetLastReadAt: null,
+      activeThreadParent: null,
+      threadMessages: [],
+      isFetchingThread: false,
+      highlightedMessageId: null,
     }),
 });

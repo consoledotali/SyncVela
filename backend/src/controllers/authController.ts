@@ -17,8 +17,6 @@ export const registerUser = async (
 ): Promise<void> => {
   try {
     const { email, name, password } = req.body;
-
-    // Notice: Tokens nahi aa rahe yahan ab
     const response = await authService.register(email, name, password);
 
     res.status(201).json({
@@ -38,7 +36,6 @@ export const verifyOTPHandler = async (
 ): Promise<void> => {
   try {
     const { email, otp } = req.body;
-
     const { user, tokens } = await authService.verifyOTP(email, otp);
 
     setRefreshTokenCookie(res, tokens.refreshToken);
@@ -70,11 +67,8 @@ export const loginUser = async (req: Request, res: Response): Promise<void> => {
   } catch (error: unknown) {
     const errorMessage =
       error instanceof Error ? error.message : "Invalid credentials.";
-
-    // 🛡️ THE FIX: Catch block mein email dobara req.body se nikalo kyunke try block wala yahan expire ho chuka hai.
     const fallbackEmail = req.body?.email;
 
-    // Frontend ko pata chalega ke isey OTP screen par bhejna hai
     if (errorMessage === "EMAIL_NOT_VERIFIED") {
       res.status(403).json({ error: errorMessage, email: fallbackEmail });
       return;
@@ -90,14 +84,12 @@ export const googleLoginHandler = async (
 ): Promise<void> => {
   try {
     const { idToken } = req.body;
-
     if (!idToken) {
       res.status(400).json({ error: "Google ID Token is required" });
       return;
     }
 
     const { user, tokens } = await authService.googleLogin(idToken);
-
     setRefreshTokenCookie(res, tokens.refreshToken);
 
     res.status(200).json({
@@ -113,6 +105,7 @@ export const googleLoginHandler = async (
   }
 };
 
+// 🚀 HOT-SWAP COOKIE STATE RE-ROUTING PIPIELINE
 export const refreshAccessToken = async (
   req: Request,
   res: Response,
@@ -127,9 +120,19 @@ export const refreshAccessToken = async (
     }
 
     const { accessToken } = await authService.refresh(refreshToken);
+
+    // Sync state response cookie update taake layout fetch parallel blocks freeze na hon
+    res.cookie("accessToken", accessToken, {
+      httpOnly: false,
+      secure: process.env.NODE_ENV === "production",
+      sameSite: "lax",
+      maxAge: 15 * 60 * 1000,
+    });
+
     res.status(200).json({ accessToken });
   } catch (error: unknown) {
     res.clearCookie("refreshToken");
+    res.clearCookie("accessToken");
     res
       .status(403)
       .json({ error: "Invalid refresh token. Please login again." });
@@ -142,7 +145,6 @@ export const logoutUser = async (
 ): Promise<void> => {
   try {
     const refreshToken = req.cookies?.refreshToken as string | undefined;
-
     if (refreshToken) {
       const decoded = jwt.decode(refreshToken) as authService.JwtPayload | null;
       if (decoded?.userId) {
@@ -151,6 +153,7 @@ export const logoutUser = async (
     }
 
     res.clearCookie("refreshToken");
+    res.clearCookie("accessToken");
     res.status(200).json({ message: "Logged out successfully" });
   } catch (error: unknown) {
     res.status(500).json({ error: "Logout failed" });

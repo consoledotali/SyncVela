@@ -28,6 +28,7 @@ export const useChannelHistory = () => {
             createdAt: msg.createdAt,
             attachments: msg.attachments || [],
             sender: msg.sender,
+            _count: msg._count,
           }));
 
           setMessages(formattedMessages);

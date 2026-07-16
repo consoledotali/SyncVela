@@ -188,12 +188,17 @@ model Message {
   channelId String?
   channel   Channel? @relation(fields: [channelId], references: [id], onDelete: Cascade)
 
-  // 🚀 THE INDUSTRY STANDARD RELATION: 1 Message can have many Rich Attachments
   attachments Attachment[]
+
+  // 🚀 THE THREADING ENGINE (Self-Referential Engine)
+  parentMessageId String?
+  parentMessage   Message?  @relation("MessageToReplies", fields: [parentMessageId], references: [id], onDelete: Cascade)
+  replies         Message[] @relation("MessageToReplies")
 
   @@index([conversationId])
   @@index([channelId])
   @@index([senderId])
+  @@index([parentMessageId]) // 🚀 Fast Lookup for rendering threaded replies
   @@map("messages")
 }
 
@@ -208,7 +213,6 @@ model Attachment {
   size      Int
   createdAt DateTime @default(now())
 
-  // Relation mapping to parent message
   messageId String
   message   Message @relation(fields: [messageId], references: [id], onDelete: Cascade)
 

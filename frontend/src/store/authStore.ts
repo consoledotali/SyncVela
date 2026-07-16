@@ -34,7 +34,7 @@ export const useAuthStore = create<AuthState>()(
       logout: () => set({ user: null, token: null, isAuthenticated: false }),
     }),
     {
-      name: "syncvela-auth", // Is naam se data browser ki localStorage mein save hoga
+      name: "syncvela-auth",
     },
   ),
 );

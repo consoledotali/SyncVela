@@ -156,11 +156,16 @@ export default function ManageMembersModal({
                 className="flex items-center justify-between p-3 border border-border/60 rounded-lg bg-muted/20"
               >
                 <div className="flex items-center gap-3 min-w-0">
-                  <Avatar className="h-9 w-9 border border-border">
+                  <Avatar className="h-9 w-9 !rounded-md border border-border">
                     <AvatarImage
-                      src={`https://api.dicebear.com/7.x/initials/svg?seed=${member.name}`}
+                      src={
+                        member?.avatarUrl
+                          ? `${member.avatarUrl}?t=${new Date().getTime()}`
+                          : `https://api.dicebear.com/7.x/initials/svg?seed=${member?.name}`
+                      }
+                      className="object-cover w-full h-full !rounded-md"
                     />
-                    <AvatarFallback>
+                    <AvatarFallback className="!rounded-md bg-primary/10 text-primary font-bold">
                       {member.name.substring(0, 2).toUpperCase()}
                     </AvatarFallback>
                   </Avatar>

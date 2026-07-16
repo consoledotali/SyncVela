@@ -11,7 +11,7 @@ export const createWorkspaceSlice: StateCreator<
   channels: [],
   activeWorkspaceId: null,
   activeChannelId: null,
-  currentUserRole: null, // 🚀 INIT
+  currentUserRole: null,
 
   setWorkspaces: (workspaces) => set({ workspaces }),
   setChannels: (channels) => set({ channels }),
@@ -19,7 +19,9 @@ export const createWorkspaceSlice: StateCreator<
   setActiveWorkspaceId: (id) =>
     set({
       activeWorkspaceId: id,
-      currentUserRole: null, // 🚀 Reset role when switching workspaces
+      currentUserRole: null,
+      activeThreadParent: null, // 🚀 THE STICKY DRAWER FIX (Workspace Switch)
+      threadMessages: [],
     }),
 
   setCurrentUserRole: (role) => set({ currentUserRole: role }),
@@ -32,6 +34,8 @@ export const createWorkspaceSlice: StateCreator<
       messages: [],
       hasMore: false,
       nextCursor: null,
+      activeThreadParent: null, 
+      threadMessages: [],
     }),
 
   updateChannelActivity: (channelId, timestamp) =>

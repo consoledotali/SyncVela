@@ -11,14 +11,15 @@ export const registerDMHandlers = (
     try {
       if (!targetUserId || targetUserId === userId) return;
 
-      // 🚀 SHIELD 1: Verify target user actually exists in database
       const targetExists = await prisma.user.findUnique({
         where: { id: targetUserId },
         select: { id: true },
       });
 
       if (!targetExists) {
-        console.warn(`⚠️ [DM Guard] Blocked room join attempt. Target user ${targetUserId} does not exist.`);
+        console.warn(
+          `⚠️ [DM Guard] Blocked room join attempt. Target user ${targetUserId} does not exist.`,
+        );
         return;
       }
 
@@ -48,28 +49,37 @@ export const registerDMHandlers = (
     }
   });
 
-  // 2. SEND PRIVATE MESSAGE (WITH CRASH BARRIER)
+  // 2. SEND PRIVATE MESSAGE (WITH CRASH BARRIER & THREADING)
   socket.on("sendPrivateMessage", async (payload: any, callback: any) => {
     try {
-      const { roomId, targetUserId, text, attachments, tempId } = payload;
+      const {
+        roomId,
+        targetUserId,
+        text,
+        attachments,
+        tempId,
+        parentMessageId,
+      } = payload;
       const textData = text || payload.content;
 
       const hasText = textData && textData.trim() !== "";
-      const hasAttachments = Array.isArray(attachments) && attachments.length > 0;
+      const hasAttachments =
+        Array.isArray(attachments) && attachments.length > 0;
 
       if (!targetUserId || (!hasText && !hasAttachments)) {
         if (callback) callback({ error: "Invalid payload strings." });
         return;
       }
 
-      // 🚀 SHIELD 2: Absolute check to block constraint violation before database execution
       const targetExists = await prisma.user.findUnique({
         where: { id: targetUserId },
         select: { id: true },
       });
 
       if (!targetExists) {
-        console.error(`🚨 [DM Alert] Aborted message creation. Target user ${targetUserId} is missing from DB.`);
+        console.error(
+          `🚨 [DM Alert] Aborted message creation. Target user ${targetUserId} is missing from DB.`,
+        );
         if (callback) callback({ error: "Recipient user no longer exists." });
         return;
       }
@@ -96,7 +106,6 @@ export const registerDMHandlers = (
         });
 
         if (!fallbackConvo) {
-          // Double check engine block for relational execution safety
           fallbackConvo = await prisma.conversation.create({
             data: {
               isGroup: false,
@@ -114,6 +123,8 @@ export const registerDMHandlers = (
           content: hasText ? textData.trim() : null,
           senderId: userId,
           conversationId: validConversationId,
+          parentMessageId: parentMessageId || null,
+
           attachments: hasAttachments
             ? {
                 create: attachments.map((att: any) => ({
@@ -132,6 +143,8 @@ export const registerDMHandlers = (
       });
 
       const broadcastPayload = { ...savedMessage, tempId };
+
+      // Emit to sender and target strictly
       socket.emit("receiveMessage", broadcastPayload);
       io.to(targetUserId).emit("receiveMessage", broadcastPayload);
 
@@ -142,7 +155,10 @@ export const registerDMHandlers = (
       if (callback) callback({ status: "ok", realId: savedMessage.id, tempId });
     } catch (error) {
       console.error("\n❌❌❌ [DM ENGINE EXCEPTION CAUGHT] ❌❌❌\n", error);
-      if (callback) callback({ error: "Internal Server Error. Message delivery failed safely." });
+      if (callback)
+        callback({
+          error: "Internal Server Error. Message delivery failed safely.",
+        });
     }
   });
 
@@ -152,11 +168,10 @@ export const registerDMHandlers = (
     async (payload: { roomId: string; targetUserId: string }) => {
       try {
         if (!payload.roomId) return;
-        
-        // Ensure conversation exists before writing read state updates
+
         const convoExists = await prisma.conversation.findUnique({
           where: { id: payload.roomId },
-          select: { id: true }
+          select: { id: true },
         });
         if (!convoExists) return;
 
@@ -167,8 +182,9 @@ export const registerDMHandlers = (
           },
           data: { lastReadAt: serverReadTime },
         });
-        
+
         if (payload.targetUserId) {
+          // Alert sender that their message is read
           io.to(payload.targetUserId).emit("messagesRead", {
             roomId: payload.roomId,
             readAt: serverReadTime.toISOString(),
@@ -194,10 +210,12 @@ export const registerDMHandlers = (
       io.to(payload.targetUserId).emit("userTyping", { senderId: userId });
     }
   });
-  
+
   socket.on("stopTyping", (payload: any) => {
     if (payload && payload.targetUserId) {
-      io.to(payload.targetUserId).emit("userStoppedTyping", { senderId: userId });
+      io.to(payload.targetUserId).emit("userStoppedTyping", {
+        senderId: userId,
+      });
     }
   });
 };

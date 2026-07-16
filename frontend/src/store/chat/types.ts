@@ -1,9 +1,5 @@
-// ==========================================
-// DOMAIN TYPES
-// ==========================================
 export type MessageStatus = "pending" | "sent" | "delivered" | "read";
 
-// 🚀 THE NEW ENTERPRISE TYPE: Relational Attachment
 export interface Attachment {
   id?: string;
   url: string;
@@ -34,9 +30,11 @@ export interface Message {
   createdAt: string;
   status?: MessageStatus;
   tempId?: string;
-  attachmentUrl?: string | null; // For backward compatibility with old messages
-  attachments?: Attachment[]; // 🚀 THE AMNESIA FIX: Ab data drop nahi hoga
+  attachmentUrl?: string | null;
+  attachments?: Attachment[];
   sender?: { id: string; name: string; avatarUrl?: string | null };
+  parentMessageId?: string | null;
+  _count?: { replies: number };
 }
 
 export interface SidebarUser {
@@ -53,9 +51,6 @@ export interface PendingMessage {
   message: Message;
 }
 
-// ==========================================
-// SLICE INTERFACES
-// ==========================================
 export interface WorkspaceSlice {
   workspaces: Workspace[];
   channels: Channel[];
@@ -76,6 +71,14 @@ export interface ChatUISlice {
   isLoading: boolean;
   typingUsers: string[];
   targetLastReadAt: string | null;
+
+  activeThreadParent: Message | null;
+  threadMessages: Message[];
+  isFetchingThread: boolean;
+
+  // 🚀 THE FLASH REGISTRY INJECTION
+  highlightedMessageId: string | null;
+
   setSelectedUser: (user: SidebarUser | null) => void;
   setActiveRoomId: (id: string | null) => void;
   setLoading: (status: boolean) => void;
@@ -83,6 +86,16 @@ export interface ChatUISlice {
   removeTypingUser: (userId: string) => void;
   setTargetLastReadAt: (time: string | null) => void;
   resetChat: () => void;
+
+  openThread: (parent: Message) => void;
+  closeThread: () => void;
+  setThreadMessages: (replies: Message[]) => void;
+  addThreadReply: (reply: Message) => void;
+  setIsFetchingThread: (status: boolean) => void;
+  updateThreadRealMessageId: (tempId: string, realId: string) => void;
+
+  // 🚀 ACTION TRIGGER TYPE INJECTION
+  setHighlightedMessage: (messageId: string | null) => void;
 }
 
 export interface UserSlice {
@@ -129,5 +142,4 @@ export interface MessageSlice {
   editMessage: (messageId: string, newText: string) => void;
 }
 
-// THE UNIFIED STORE TYPE
 export type ChatStore = WorkspaceSlice & ChatUISlice & UserSlice & MessageSlice;

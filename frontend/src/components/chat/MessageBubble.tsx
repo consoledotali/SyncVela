@@ -2,6 +2,7 @@ import React, { useState } from "react";
 import { useSocket } from "@/src/providers/SocketProvider";
 import { useChatStore } from "@/src/store/chat";
 import { usePermissions } from "@/src/hooks/usePermissions";
+import { MessageSquare } from "lucide-react";
 import {
   Avatar,
   AvatarFallback,
@@ -17,16 +18,21 @@ export default function MessageBubble({
   isMe,
   isReadRealtime,
   hideHeader = false,
+  isInsideThreadPanel = false,
 }: any) {
   const { socket } = useSocket();
   const {
     activeChannelId,
     activeRoomId,
     selectedUser,
+    setSelectedUser,
     deleteMessage,
     editMessage,
     onlineUsers,
-    users, // 🚀 THE ROSTER (Active workspace members)
+    users,
+    openThread,
+    highlightedMessageId,
+    targetLastReadAt,
   } = useChatStore();
 
   const { hasPermission } = usePermissions();
@@ -50,13 +56,11 @@ export default function MessageBubble({
     minute: "2-digit",
   });
 
-  // 🚀 THE FORMER MEMBER DETECTOR
-  // Agar message mera nahi hai, aur sender ka ID hamare active users ki list mein nahi hai,
-  // iska matlab wo is workspace se nikal diya gaya hai.
   const isFormerMember =
     !isMe && msg.sender && !users.some((u) => u.id === msg.sender.id);
 
   const attachments = Array.isArray(msg.attachments) ? msg.attachments : [];
+  const replyCount = msg._count?.replies || 0;
 
   const mediaFiles = attachments.filter((att: any) => {
     if (!att || !att.url) return false;
@@ -113,9 +117,41 @@ export default function MessageBubble({
     }
   };
 
+  const handleUserClick = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (isMe || isFormerMember || !msg.sender) return;
+
+    const targetSidebarUser = users.find((u) => u.id === msg.sender.id);
+    const targetUserPayload = targetSidebarUser || {
+      id: msg.sender.id,
+      name: msg.sender.name,
+      email: "",
+      avatarUrl: msg.sender.avatarUrl,
+    };
+
+    setSelectedUser(targetUserPayload);
+
+    if (socket) {
+      socket.emit("joinPrivateChat", msg.sender.id);
+    }
+  };
+
+  const isThreadReplyRead = React.useMemo(() => {
+    if (!isMe || !isInsideThreadPanel || !targetLastReadAt) return false;
+    const msgTime = new Date(msg.createdAt).getTime();
+    const readTime = new Date(targetLastReadAt).getTime();
+    return msgTime <= readTime + 2000;
+  }, [isMe, isInsideThreadPanel, targetLastReadAt, msg.createdAt]);
+
+  const isCurrentlyHighlighted = highlightedMessageId === msg.id;
+
   return (
     <div
-      className={`relative group flex gap-3 pr-6 pl-4 hover:bg-muted/40 transition-colors duration-150 border-l-[3px] border-transparent hover:border-primary/40 ${!hideHeader ? "mt-4 pt-1 pb-1" : "mt-[2px] pt-[2px] pb-[2px]"}`}
+      className={`relative group flex gap-3 pr-6 pl-4 transition-all duration-500 border-l-[3px] ${
+        isCurrentlyHighlighted
+          ? "bg-primary/5 border-primary font-medium shadow-xs"
+          : "border-transparent hover:bg-muted/40 hover:border-primary/40"
+      } ${!hideHeader ? "mt-4 pt-1 pb-1" : "mt-[2px] pt-[2px] pb-[2px]"}`}
     >
       <MessageActions
         canEdit={canEdit}
@@ -124,17 +160,30 @@ export default function MessageBubble({
         hasText={!!msg.text}
         onEdit={() => setIsEditing(true)}
         onDelete={handleDelete}
+        onReply={!isInsideThreadPanel ? () => openThread(msg) : undefined}
       />
 
       <div className="w-[42px] shrink-0 flex flex-col items-center select-none relative">
         {!hideHeader ? (
           <Avatar
-            className={`h-[40px] w-[40px] border border-border rounded-md shadow-sm ${isFormerMember ? "opacity-50 grayscale" : ""}`}
+            onClick={handleUserClick}
+            // 🚀 THE FIX: '!rounded-md' explicitly kills Shadcn's default circle
+            className={`h-[40px] w-[40px] !rounded-md border border-border shadow-sm ${
+              isFormerMember
+                ? "opacity-50 grayscale"
+                : "cursor-pointer hover:opacity-80 transition-opacity"
+            }`}
           >
             <AvatarImage
-              src={`https://api.dicebear.com/7.x/initials/svg?seed=${senderName}`}
+              src={
+                msg.sender?.avatarUrl
+                  ? `${msg.sender.avatarUrl}?t=${new Date(msg.createdAt).getTime()}`
+                  : `https://api.dicebear.com/7.x/initials/svg?seed=${senderName}`
+              }
+              // 🚀 THE FIX: Force the image to map exactly to the parent's corners
+              className="object-cover w-full h-full !rounded-md"
             />
-            <AvatarFallback className="bg-primary/10 text-primary text-sm font-bold rounded-md">
+            <AvatarFallback className="bg-primary/10 text-primary text-sm font-bold !rounded-md">
               {initials}
             </AvatarFallback>
           </Avatar>
@@ -149,12 +198,16 @@ export default function MessageBubble({
         {!hideHeader && (
           <div className="flex items-center gap-2 select-none mb-0.5 flex-wrap">
             <span
-              className={`font-bold text-[15px] ${isFormerMember ? "text-muted-foreground line-through" : "text-foreground hover:underline cursor-pointer"}`}
+              onClick={handleUserClick}
+              className={`font-bold text-[15px] ${
+                isFormerMember
+                  ? "text-muted-foreground line-through"
+                  : "text-foreground hover:underline cursor-pointer"
+              }`}
             >
               {senderName}
             </span>
 
-            {/* 🚀 THE ENTERPRISE DEACTIVATED BADGE */}
             {isFormerMember && (
               <span className="px-1.5 py-0.5 bg-destructive/10 text-destructive text-[9px] font-bold uppercase tracking-wider rounded-sm">
                 Deactivated
@@ -167,7 +220,9 @@ export default function MessageBubble({
             {isMe && (
               <MessageStatus
                 status={msg.status}
-                isReadRealtime={isReadRealtime}
+                isReadRealtime={
+                  isInsideThreadPanel ? isThreadReplyRead : isReadRealtime
+                }
                 isChannel={isChannelView}
                 isTargetOnline={isTargetOnline}
               />
@@ -238,6 +293,18 @@ export default function MessageBubble({
               />
             ))}
           </div>
+        )}
+
+        {!isInsideThreadPanel && replyCount > 0 && (
+          <button
+            onClick={() => openThread(msg)}
+            className="mt-2 flex items-center gap-2 text-xs font-bold text-primary hover:bg-primary/5 border border-primary/20 rounded-md py-1.5 px-3 w-max select-none transition-all group/thread shadow-sm animate-in zoom-in-95 duration-150"
+          >
+            <MessageSquare className="h-3.5 w-3.5 shrink-0 transition-transform group-hover/thread:scale-110" />
+            <span>
+              {replyCount} {replyCount === 1 ? "reply" : "replies"}
+            </span>
+          </button>
         )}
       </div>
     </div>
