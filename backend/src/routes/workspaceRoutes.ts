@@ -5,6 +5,8 @@ import {
   joinWorkspace,
   getWorkspaceMembers,
   deleteWorkspace,
+  updateWorkspaceMemberRole,
+  removeWorkspaceMember,
 } from "../controllers/workspaceController";
 import { authMiddleware } from "../middlewares/authMiddleware";
 
@@ -18,5 +20,7 @@ router.get("/", getUserWorkspaces);
 router.post("/join/:inviteCode", joinWorkspace);
 router.get("/:workspaceId/members", getWorkspaceMembers);
 router.delete("/:workspaceId", deleteWorkspace);
+router.put("/members/role", updateWorkspaceMemberRole);
+router.delete("/:workspaceId/members/:userId", removeWorkspaceMember);
 
 export default router;

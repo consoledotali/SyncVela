@@ -1,8 +1,9 @@
 import { Response } from "express";
 import prisma from "../config/db";
 import { AuthenticatedRequest } from "./channelController";
+import { authorizeRBAC } from "../utils/rbac";
 
-// 1. CREATE WORKSPACE (NO DEFAULT CHANNELS, REAL-TIME OWNER ID)
+// 1. CREATE WORKSPACE
 export const createWorkspace = async (
   req: AuthenticatedRequest,
   res: Response,
@@ -44,7 +45,7 @@ export const createWorkspace = async (
   }
 };
 
-// 2. GET USER'S WORKSPACES (THE DATA EXPOSURE FIX)
+// 2. GET USER'S WORKSPACES
 export const getUserWorkspaces = async (
   req: AuthenticatedRequest,
   res: Response,
@@ -54,9 +55,7 @@ export const getUserWorkspaces = async (
 
     const workspaces = await prisma.workspace.findMany({
       where: {
-        members: {
-          some: { userId: userId },
-        },
+        members: { some: { userId: userId } },
       },
       include: {
         members: {
@@ -82,7 +81,7 @@ export const getUserWorkspaces = async (
   }
 };
 
-// 3. JOIN WORKSPACE VIA INVITE CODE (THE SAFE SOCKET EXTRACTION)
+// 3. JOIN WORKSPACE VIA INVITE CODE
 export const joinWorkspace = async (
   req: AuthenticatedRequest,
   res: Response,
@@ -103,7 +102,11 @@ export const joinWorkspace = async (
 
     const isAlreadyMember = workspace.members.some((m) => m.userId === userId);
     if (isAlreadyMember) {
-      res.status(400).json({ error: "You are already in this workspace." });
+      // 🚀 THE FIX: Sending workspaceId back even on error
+      res.status(400).json({
+        error: "You are already in this workspace.",
+        workspaceId: workspace.id,
+      });
       return;
     }
 
@@ -120,7 +123,6 @@ export const joinWorkspace = async (
       },
     });
 
-    // 🚀 THE CLEAN ARCHITECTURE FIX: Fetch io directly from the app state
     const io = req.app.get("io");
 
     if (io) {
@@ -148,6 +150,14 @@ export const getWorkspaceMembers = async (
 ): Promise<void> => {
   try {
     const workspaceId = req.params.workspaceId as string;
+    const userId = req.user!.userId;
+
+    // 🚀 THE ENTERPRISE GATEKEEPER
+    const auth = await authorizeRBAC(userId, workspaceId, "VIEW_WORKSPACE");
+    if (!auth.allowed) {
+      res.status(403).json({ error: auth.reason });
+      return;
+    }
 
     const workspace = await prisma.workspace.findUnique({
       where: { id: workspaceId },
@@ -177,6 +187,7 @@ export const getWorkspaceMembers = async (
 
         return {
           ...m.user,
+          role: m.role,
           lastMessageAt: lastMessage ? lastMessage.createdAt : null,
         };
       }),
@@ -198,15 +209,10 @@ export const deleteWorkspace = async (
     const workspaceId = req.params.workspaceId as string;
     const userId = req.user!.userId;
 
-    const memberRecord = await prisma.workspaceMember.findUnique({
-      where: { userId_workspaceId: { userId, workspaceId } },
-    });
-
-    if (!memberRecord || memberRecord.role !== "OWNER") {
-      res.status(403).json({
-        error:
-          "Strictly Restricted: Only the Workspace Owner can delete this workspace.",
-      });
+    // 🚀 THE ENTERPRISE GATEKEEPER
+    const auth = await authorizeRBAC(userId, workspaceId, "DELETE_WORKSPACE");
+    if (!auth.allowed) {
+      res.status(403).json({ error: auth.reason });
       return;
     }
 
@@ -233,6 +239,148 @@ export const deleteWorkspace = async (
       .json({ success: true, message: "Workspace completely deleted." });
   } catch (error) {
     console.error("❌ Workspace Deletion Failed:", error);
+    res.status(500).json({ error: "Internal Server Error" });
+  }
+};
+
+// 6. UPDATE WORKSPACE MEMBER ROLE (RBAC Enforced)
+export const updateWorkspaceMemberRole = async (
+  req: AuthenticatedRequest,
+  res: Response,
+): Promise<void> => {
+  try {
+    // 🚀 THE FIX: Cast explicitly to string to stop type union leakage
+    const workspaceId = req.body.workspaceId as string;
+    const targetUserId = req.body.targetUserId as string;
+    const newRole = req.body.newRole as string;
+    const currentUserId = req.user!.userId;
+
+    if (!workspaceId || !targetUserId || !newRole) {
+      res.status(400).json({
+        error: "Missing required fields: workspaceId, targetUserId, newRole",
+      });
+      return;
+    }
+
+    if (!["ADMIN", "MEMBER", "GUEST"].includes(newRole)) {
+      res.status(400).json({
+        error: "Invalid role assignment. Allowed values: ADMIN, MEMBER, GUEST",
+      });
+      return;
+    }
+
+    const auth = await authorizeRBAC(
+      currentUserId,
+      workspaceId,
+      "MANAGE_WORKSPACE",
+    );
+    if (!auth.allowed) {
+      res.status(403).json({ error: auth.reason });
+      return;
+    }
+
+    const targetMember = await prisma.workspaceMember.findUnique({
+      where: { userId_workspaceId: { userId: targetUserId, workspaceId } },
+    });
+
+    if (targetMember?.role === "OWNER") {
+      res.status(400).json({
+        error: "System Lock: Workspace Owner's role cannot be modified.",
+      });
+      return;
+    }
+
+    const updatedMember = await prisma.workspaceMember.update({
+      where: { userId_workspaceId: { userId: targetUserId, workspaceId } },
+      data: { role: newRole as any }, // Cast to any or your Prisma Enum type
+      include: { user: { select: { id: true, name: true } } },
+    });
+
+    const io = req.app.get("io");
+    if (io) {
+      io.to(workspaceId).emit("member_role_updated", {
+        workspaceId,
+        userId: targetUserId,
+        newRole,
+      });
+    }
+
+    res.status(200).json({
+      success: true,
+      message: `Successfully promoted ${updatedMember.user.name} to ${newRole}`,
+    });
+  } catch (error) {
+    console.error("❌ Failed to update member role:", error);
+    res.status(500).json({ error: "Internal Server Error" });
+  }
+};
+
+// 7. KICK MEMBER FROM WORKSPACE (RBAC Enforced)
+export const removeWorkspaceMember = async (
+  req: AuthenticatedRequest,
+  res: Response,
+): Promise<void> => {
+  try {
+    const workspaceId = req.params.workspaceId as string;
+    const targetUserId = req.params.userId as string;
+    const currentUserId = req.user!.userId;
+
+    const auth = await authorizeRBAC(
+      currentUserId,
+      workspaceId,
+      "MANAGE_WORKSPACE",
+    );
+    if (!auth.allowed) {
+      res.status(403).json({ error: auth.reason });
+      return;
+    }
+
+    const targetMember = await prisma.workspaceMember.findUnique({
+      where: { userId_workspaceId: { userId: targetUserId, workspaceId } },
+    });
+
+    if (!targetMember) {
+      res.status(404).json({ error: "Member not found in this workspace." });
+      return;
+    }
+
+    if (targetMember.role === "OWNER") {
+      res
+        .status(400)
+        .json({ error: "System Lock: You cannot kick the Workspace Owner." });
+      return;
+    }
+
+    await prisma.$transaction(async (tx) => {
+      const channels = await tx.channel.findMany({ where: { workspaceId } });
+      const channelIds = channels.map((c) => c.id);
+
+      if (channelIds.length > 0) {
+        await tx.channelMember.deleteMany({
+          where: { channelId: { in: channelIds }, userId: targetUserId },
+        });
+      }
+
+      await tx.workspaceMember.delete({
+        where: { userId_workspaceId: { userId: targetUserId, workspaceId } },
+      });
+    });
+
+    const io = req.app.get("io");
+    if (io) {
+      io.to(workspaceId).emit("member_kicked", {
+        workspaceId,
+        userId: targetUserId,
+      });
+      io.to(targetUserId).emit("workspace_revoked", workspaceId);
+    }
+
+    res.status(200).json({
+      success: true,
+      message: "Member successfully removed from workspace.",
+    });
+  } catch (error) {
+    console.error("❌ Failed to kick member:", error);
     res.status(500).json({ error: "Internal Server Error" });
   }
 };

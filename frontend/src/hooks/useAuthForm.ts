@@ -48,7 +48,6 @@ export const useAuthForm = (initialMode: boolean = true) => {
 
       const data = await response.json();
 
-      // 🛡️ 1. ERROR HANDLING & GATEKEEPER
       if (!response.ok) {
         if (data.error === "EMAIL_NOT_VERIFIED") {
           router.push(
@@ -61,17 +60,18 @@ export const useAuthForm = (initialMode: boolean = true) => {
         );
       }
 
-      // 🛡️ 2. SUCCESS HANDLING (Separated Logic)
       if (isLoginMode) {
         login(data.user, data.accessToken || data.token);
 
-        // 🟢 THE AMNESIA FIX: Check if user came from an invite link
+        // 🚀 THE FIX: HARD REFRESH HARD-NAVIGATION
+        // Soft router push memory cycle leak karta hai.
+        // Window location assignment se raw navigation complete pipelines fire hoti hain.
         const pendingInvite = localStorage.getItem("pendingInvite");
         if (pendingInvite) {
-          localStorage.removeItem("pendingInvite"); // Kachra saaf karo
-          router.push(pendingInvite); // Wapas invite par bhejo
+          localStorage.removeItem("pendingInvite");
+          window.location.href = pendingInvite;
         } else {
-          router.push("/");
+          window.location.href = "/";
         }
       } else {
         router.push(`/verify-otp?email=${encodeURIComponent(formData.email)}`);

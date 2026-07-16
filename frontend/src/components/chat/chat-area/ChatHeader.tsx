@@ -5,9 +5,9 @@ import {
   AvatarFallback,
   AvatarImage,
 } from "@/src/components/ui/avatar";
-import { Lock, Hash, ArrowLeft, UserPlus, Users } from "lucide-react"; // 🟢 Users import kiya
-import { Channel, SidebarUser, useChatStore } from "@/src/store/chat";
-import { useAuthStore } from "@/src/store/authStore";
+import { Lock, Hash, ArrowLeft, UserPlus, Users } from "lucide-react";
+import { Channel, SidebarUser } from "@/src/store/chat";
+import { usePermissions } from "@/src/hooks/usePermissions"; // 🚀 THE RBAC ENGINE
 import InviteModal from "./InviteModal";
 import ChannelMembersModal from "../ChannelMembersModal";
 
@@ -25,22 +25,11 @@ export default function ChatHeader({
   onBack,
 }: ChatHeaderProps) {
   const [isInviteModalOpen, setIsInviteModalOpen] = useState(false);
-  const [isMembersModalOpen, setIsMembersModalOpen] = useState(false); // 🟢 Nayi state
+  const [isMembersModalOpen, setIsMembersModalOpen] = useState(false);
 
-  const { user } = useAuthStore();
-  const { workspaces, activeWorkspaceId } = useChatStore();
-  const activeWorkspace = workspaces.find((w) => w.id === activeWorkspaceId);
-
-  // 🛡️ ROLE CHECK FOR ADDING MEMBERS
-  const isOwner =
-    activeWorkspace &&
-    user &&
-    ((activeWorkspace as any).ownerId === user.id ||
-      (activeWorkspace as any).creatorId === user.id ||
-      (activeWorkspace as any).userId === user.id ||
-      (activeWorkspace as any).members?.some(
-        (m: any) => m.userId === user.id && m.role === "OWNER",
-      ));
+  // 🛡️ THE CLEAN UI GATEKEEPER (No more messy if/else checks!)
+  const { hasPermission } = usePermissions();
+  const canInvite = hasPermission("INVITE_USERS");
 
   return (
     <header className="sticky top-0 z-10 flex items-center justify-between px-4 py-3 border-b border-border bg-background select-none">
@@ -89,7 +78,7 @@ export default function ChatHeader({
       {/* Action Buttons Section */}
       {isChannelView && activeChannel && (
         <div className="ml-auto flex items-center gap-2">
-          {/* 🟢 VIEW MEMBERS BUTTON (Har kisi ko dikhega) */}
+          {/* 🟢 VIEW MEMBERS BUTTON (Everyone can view) */}
           <Button
             variant="ghost"
             size="sm"
@@ -100,8 +89,8 @@ export default function ChatHeader({
             <Users className="h-4 w-4" />
           </Button>
 
-          {/* 🛡️ ADD MEMBERS BUTTON (Sirf owner ko dikhega, aur sirf private channel mein) */}
-          {activeChannel.type === "PRIVATE" && isOwner && (
+          {/* 🛡️ ADD MEMBERS BUTTON (Strictly controlled by RBAC) */}
+          {activeChannel.type === "PRIVATE" && canInvite && (
             <Button
               variant="outline"
               size="sm"
@@ -121,7 +110,6 @@ export default function ChatHeader({
         onClose={() => setIsInviteModalOpen(false)}
       />
 
-      {/* 🟢 NAYA MODAL RENDER */}
       {activeChannel && (
         <ChannelMembersModal
           isOpen={isMembersModalOpen}

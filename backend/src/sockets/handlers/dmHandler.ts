@@ -6,8 +6,22 @@ export const registerDMHandlers = (
   socket: Socket,
   userId: string,
 ) => {
+  // 1. JOIN PRIVATE CHAT (WITH IDENTITY SHIELD)
   socket.on("joinPrivateChat", async (targetUserId: string) => {
     try {
+      if (!targetUserId || targetUserId === userId) return;
+
+      // 🚀 SHIELD 1: Verify target user actually exists in database
+      const targetExists = await prisma.user.findUnique({
+        where: { id: targetUserId },
+        select: { id: true },
+      });
+
+      if (!targetExists) {
+        console.warn(`⚠️ [DM Guard] Blocked room join attempt. Target user ${targetUserId} does not exist.`);
+        return;
+      }
+
       let conversation = await prisma.conversation.findFirst({
         where: {
           isGroup: false,
@@ -34,16 +48,31 @@ export const registerDMHandlers = (
     }
   });
 
+  // 2. SEND PRIVATE MESSAGE (WITH CRASH BARRIER)
   socket.on("sendPrivateMessage", async (payload: any, callback: any) => {
     try {
       const { roomId, targetUserId, text, attachments, tempId } = payload;
       const textData = text || payload.content;
 
       const hasText = textData && textData.trim() !== "";
-      const hasAttachments =
-        Array.isArray(attachments) && attachments.length > 0;
+      const hasAttachments = Array.isArray(attachments) && attachments.length > 0;
 
-      if (!targetUserId || (!hasText && !hasAttachments)) return;
+      if (!targetUserId || (!hasText && !hasAttachments)) {
+        if (callback) callback({ error: "Invalid payload strings." });
+        return;
+      }
+
+      // 🚀 SHIELD 2: Absolute check to block constraint violation before database execution
+      const targetExists = await prisma.user.findUnique({
+        where: { id: targetUserId },
+        select: { id: true },
+      });
+
+      if (!targetExists) {
+        console.error(`🚨 [DM Alert] Aborted message creation. Target user ${targetUserId} is missing from DB.`);
+        if (callback) callback({ error: "Recipient user no longer exists." });
+        return;
+      }
 
       let validConversationId = roomId;
 
@@ -67,6 +96,7 @@ export const registerDMHandlers = (
         });
 
         if (!fallbackConvo) {
+          // Double check engine block for relational execution safety
           fallbackConvo = await prisma.conversation.create({
             data: {
               isGroup: false,
@@ -111,18 +141,25 @@ export const registerDMHandlers = (
 
       if (callback) callback({ status: "ok", realId: savedMessage.id, tempId });
     } catch (error) {
-      console.error(
-        "\n❌❌❌ [DM] PRISMA RELATIONAL DATABASE CRASH ❌❌❌",
-        error,
-      );
-      if (callback) callback({ error: "Failed to send private message" });
+      console.error("\n❌❌❌ [DM ENGINE EXCEPTION CAUGHT] ❌❌❌\n", error);
+      if (callback) callback({ error: "Internal Server Error. Message delivery failed safely." });
     }
   });
 
+  // 3. MARK AS READ (WITH CONTEXT SHIELD)
   socket.on(
     "markAsRead",
     async (payload: { roomId: string; targetUserId: string }) => {
       try {
+        if (!payload.roomId) return;
+        
+        // Ensure conversation exists before writing read state updates
+        const convoExists = await prisma.conversation.findUnique({
+          where: { id: payload.roomId },
+          select: { id: true }
+        });
+        if (!convoExists) return;
+
         const serverReadTime = new Date();
         await prisma.participant.update({
           where: {
@@ -130,27 +167,37 @@ export const registerDMHandlers = (
           },
           data: { lastReadAt: serverReadTime },
         });
-        io.to(payload.targetUserId).emit("messagesRead", {
-          roomId: payload.roomId,
-          readAt: serverReadTime.toISOString(),
-        });
+        
+        if (payload.targetUserId) {
+          io.to(payload.targetUserId).emit("messagesRead", {
+            roomId: payload.roomId,
+            readAt: serverReadTime.toISOString(),
+          });
+        }
       } catch (error) {
-        console.error("❌ Mark as read failed:", error);
+        console.error("❌ Mark as read failed safely:", error);
       }
     },
   );
 
   socket.on("markAsDelivered", (payload: any) => {
-    io.to(payload.senderId).emit("messageDelivered", {
-      messageId: payload.messageId,
-      tempId: payload.tempId,
-    });
+    if (payload && payload.senderId) {
+      io.to(payload.senderId).emit("messageDelivered", {
+        messageId: payload.messageId,
+        tempId: payload.tempId,
+      });
+    }
   });
 
-  socket.on("typing", (payload: any) =>
-    io.to(payload.targetUserId).emit("userTyping", { senderId: userId }),
-  );
-  socket.on("stopTyping", (payload: any) =>
-    io.to(payload.targetUserId).emit("userStoppedTyping", { senderId: userId }),
-  );
+  socket.on("typing", (payload: any) => {
+    if (payload && payload.targetUserId) {
+      io.to(payload.targetUserId).emit("userTyping", { senderId: userId });
+    }
+  });
+  
+  socket.on("stopTyping", (payload: any) => {
+    if (payload && payload.targetUserId) {
+      io.to(payload.targetUserId).emit("userStoppedTyping", { senderId: userId });
+    }
+  });
 };

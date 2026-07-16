@@ -61,10 +61,12 @@ export interface WorkspaceSlice {
   channels: Channel[];
   activeWorkspaceId: string | null;
   activeChannelId: string | null;
+  currentUserRole: "OWNER" | "ADMIN" | "MEMBER" | "GUEST" | null;
   setWorkspaces: (workspaces: Workspace[]) => void;
   setChannels: (channels: Channel[]) => void;
   setActiveWorkspaceId: (id: string | null) => void;
   setActiveChannelId: (id: string | null) => void;
+  setCurrentUserRole: (role: any) => void;
   updateChannelActivity: (channelId: string, timestamp: string) => void;
 }
 

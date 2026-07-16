@@ -17,17 +17,15 @@ export default function InvitePage() {
   const [errorMessage, setErrorMessage] = useState("");
 
   const inviteCode = params.code as string;
-  const hasFetched = useRef(false); // 🟢 THE STRICT MODE GATEKEEPER
+  const hasFetched = useRef(false);
 
   useEffect(() => {
-    // 🟢 GATEKEEPER: THE AMNESIA FIX
     if (!isAuthenticated || !token) {
       localStorage.setItem("pendingInvite", `/invite/${inviteCode}`);
       router.push("/auth/login");
       return;
     }
 
-    // 🟢 Agar hit ho chuka hai toh dobara mat jao (Strict Mode Fix)
     if (hasFetched.current) return;
     hasFetched.current = true;
 
@@ -44,8 +42,16 @@ export default function InvitePage() {
         );
 
         if (response.ok) {
+          const data = await response.json();
           setStatus("success");
-          // 🟢 THE SOFT-NAVIGATION FIX: Hard reload the app so workspaces are re-fetched!
+
+          // 🚀 THE ACTIVE WORKSPACE OVERRIDE FIX
+          // Jab join ho jaye, toh aggressively local storage update kar do
+          // taake useWorkspaceInit isay pick kar le.
+          if (data.workspaceId) {
+            localStorage.setItem("lastActiveWorkspaceId", data.workspaceId);
+          }
+
           setTimeout(() => {
             window.location.href = "/";
           }, 1500);
@@ -54,7 +60,12 @@ export default function InvitePage() {
 
           if (err.error === "You are already in this workspace.") {
             setStatus("already_member");
-            // 🟢 THE SOFT-NAVIGATION FIX
+
+            // 🚀 Force selection if they are already a member
+            if (err.workspaceId) {
+              localStorage.setItem("lastActiveWorkspaceId", err.workspaceId);
+            }
+
             setTimeout(() => {
               window.location.href = "/";
             }, 1500);

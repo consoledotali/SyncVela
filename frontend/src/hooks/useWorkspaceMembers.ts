@@ -1,20 +1,20 @@
 import { useEffect } from "react";
 import { useAuthStore } from "@/src/store/authStore";
 import { useChatStore } from "@/src/store/chat";
-import { useSocket } from "@/src/providers/SocketProvider"; // 🟢 IMPORT SOCKET
+import { useSocket } from "@/src/providers/SocketProvider";
 
 export const useWorkspaceMembers = () => {
   const { token, user } = useAuthStore();
-  const { activeWorkspaceId, setUsers } = useChatStore();
-  const { socket } = useSocket(); // 🟢 GET SOCKET INSTANCE
+  const { activeWorkspaceId, setUsers, setCurrentUserRole } = useChatStore();
+  const { socket } = useSocket();
 
   useEffect(() => {
-    if (!activeWorkspaceId || !token) {
+    if (!activeWorkspaceId || !token || !user) {
       setUsers([]);
+      setCurrentUserRole(null);
       return;
     }
 
-    // 🚀 THE FIX: Dynamically join the workspace socket room!
     if (socket) {
       socket.emit("join_workspace", activeWorkspaceId);
     }
@@ -28,7 +28,15 @@ export const useWorkspaceMembers = () => {
 
         if (response.ok) {
           const members = await response.json();
-          const filteredMembers = members.filter((m: any) => m.id !== user?.id);
+
+          // 🚀 THE RBAC HYDRATION: Extract my own role and save it
+          const myRecord = members.find((m: any) => m.id === user.id);
+          if (myRecord && myRecord.role) {
+            setCurrentUserRole(myRecord.role);
+          }
+
+          // Filter out myself for the sidebar
+          const filteredMembers = members.filter((m: any) => m.id !== user.id);
           setUsers(filteredMembers);
 
           const counts: Record<string, number> = {};
@@ -46,5 +54,5 @@ export const useWorkspaceMembers = () => {
     };
 
     fetchMembers();
-  }, [activeWorkspaceId, token, user, setUsers, socket]); // Dependency array updated
+  }, [activeWorkspaceId, token, user, setUsers, setCurrentUserRole, socket]);
 };

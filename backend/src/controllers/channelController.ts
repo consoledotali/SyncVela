@@ -1,5 +1,6 @@
 import { Request, Response } from "express";
 import prisma from "../config/db";
+import { authorizeRBAC } from "../utils/rbac";
 
 export interface AuthenticatedRequest extends Request {
   user?: { userId: string };
@@ -21,20 +22,10 @@ export const createChannel = async (
       return;
     }
 
-    const isWorkspaceMember = await prisma.workspaceMember.findUnique({
-      where: { userId_workspaceId: { userId, workspaceId } },
-    });
-
-    if (!isWorkspaceMember) {
-      res.status(403).json({ error: "Access Denied." });
-      return;
-    }
-
-    if (
-      isWorkspaceMember.role === "MEMBER" ||
-      isWorkspaceMember.role === "GUEST"
-    ) {
-      res.status(403).json({ error: "Unauthorized." });
+    // 🚀 THE ENTERPRISE GATEKEEPER
+    const auth = await authorizeRBAC(userId, workspaceId, "CREATE_CHANNEL");
+    if (!auth.allowed) {
+      res.status(403).json({ error: auth.reason });
       return;
     }
 
@@ -54,6 +45,12 @@ export const createChannel = async (
       return newChannel;
     });
 
+    // 🚀 THE REAL-TIME SYNC FIX: Broadcast the new public channel to the entire workspace
+    const io = req.app.get("io");
+    if (io && type === "PUBLIC") {
+      io.to(workspaceId).emit("channel_created", channel);
+    }
+
     res.status(201).json(channel);
   } catch (error) {
     console.error("❌ Channel Creation Failed:", error);
@@ -70,12 +67,10 @@ export const getWorkspaceChannels = async (
     const workspaceId = req.params.workspaceId as string;
     const userId = req.user!.userId;
 
-    const isWorkspaceMember = await prisma.workspaceMember.findUnique({
-      where: { userId_workspaceId: { userId, workspaceId } },
-    });
-
-    if (!isWorkspaceMember) {
-      res.status(403).json({ error: "Access Denied." });
+    // 🚀 THE ENTERPRISE GATEKEEPER
+    const auth = await authorizeRBAC(userId, workspaceId, "VIEW_WORKSPACE");
+    if (!auth.allowed) {
+      res.status(403).json({ error: auth.reason });
       return;
     }
 
@@ -88,18 +83,18 @@ export const getWorkspaceChannels = async (
     });
 
     const readStates = await prisma.channelMember.findMany({
-      where: {
-        userId,
-        channelId: { in: channels.map((c) => c.id) },
-      },
+      where: { userId, channelId: { in: channels.map((c) => c.id) } },
     });
 
-    const fallbackBaselineDate = isWorkspaceMember.createdAt || new Date();
+    // Extracting member record for fallback date calculation safely
+    const memberRecord = await prisma.workspaceMember.findUnique({
+      where: { userId_workspaceId: { userId, workspaceId } },
+    });
+    const fallbackBaselineDate = memberRecord?.createdAt || new Date();
 
     const hydratedChannels = await Promise.all(
       channels.map(async (channel) => {
         const myState = readStates.find((rs) => rs.channelId === channel.id);
-
         const unreadCount = await prisma.message.count({
           where: {
             channelId: channel.id,
@@ -108,11 +103,7 @@ export const getWorkspaceChannels = async (
           },
         });
 
-        return {
-          ...channel,
-          unreadCount,
-          isBold: unreadCount > 0,
-        };
+        return { ...channel, unreadCount, isBold: unreadCount > 0 };
       }),
     );
 
@@ -174,20 +165,14 @@ export const inviteToChannel = async (
       return;
     }
 
-    const inviterWorkspaceMember = await prisma.workspaceMember.findUnique({
-      where: {
-        userId_workspaceId: {
-          userId: inviterId,
-          workspaceId: channel.workspaceId,
-        },
-      },
-    });
-
-    if (!inviterWorkspaceMember || inviterWorkspaceMember.role !== "OWNER") {
-      res.status(403).json({
-        error:
-          "Strictly Restricted: Only Workspace Owners can invite members to private channels.",
-      });
+    // 🚀 THE ENTERPRISE GATEKEEPER
+    const auth = await authorizeRBAC(
+      inviterId,
+      channel.workspaceId,
+      "INVITE_USERS",
+    );
+    if (!auth.allowed) {
+      res.status(403).json({ error: auth.reason });
       return;
     }
 
@@ -203,10 +188,7 @@ export const inviteToChannel = async (
     }
 
     const workspaceMembers = await prisma.workspaceMember.findMany({
-      where: {
-        workspaceId: channel.workspaceId,
-        userId: { in: userIds },
-      },
+      where: { workspaceId: channel.workspaceId, userId: { in: userIds } },
       select: { userId: true },
     });
 
@@ -235,7 +217,7 @@ export const inviteToChannel = async (
   }
 };
 
-// 5. GET CHANNEL MEMBERS (Production Level API with Roles)
+// 5. GET CHANNEL MEMBERS
 export const getChannelMembers = async (
   req: AuthenticatedRequest,
   res: Response,
@@ -244,7 +226,6 @@ export const getChannelMembers = async (
     const channelId = req.params.channelId as string;
     const userId = req.user!.userId;
 
-    // 1. Fetch channel for workspace ID and security checks
     const channel = await prisma.channel.findUnique({
       where: { id: channelId },
       include: { members: true },
@@ -266,7 +247,6 @@ export const getChannelMembers = async (
       }
     }
 
-    // 2. Fetch basic user details from the channel
     const channelMembers = await prisma.channelMember.findMany({
       where: { channelId },
       include: {
@@ -276,24 +256,19 @@ export const getChannelMembers = async (
       },
     });
 
-    // 3. 🚀 THE ARCHITECTURE FIX: User ke roles Workspace se fetch karo
     const userIds = channelMembers.map((m) => m.userId);
     const workspaceRoles = await prisma.workspaceMember.findMany({
-      where: {
-        workspaceId: channel.workspaceId,
-        userId: { in: userIds },
-      },
+      where: { workspaceId: channel.workspaceId, userId: { in: userIds } },
       select: { userId: true, role: true },
     });
 
-    // 4. Data map karke combine karo aur 'role' explicitly frontend ko bhejo
     const formattedMembers = channelMembers.map((m) => {
       const workspaceMember = workspaceRoles.find(
         (wm) => wm.userId === m.userId,
       );
       return {
         ...m.user,
-        role: workspaceMember ? workspaceMember.role : "MEMBER", // Inject Role!
+        role: workspaceMember ? workspaceMember.role : "MEMBER",
       };
     });
 
