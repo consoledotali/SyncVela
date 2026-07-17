@@ -39,7 +39,9 @@ export const useAuthForm = (initialMode: boolean = true) => {
         };
 
     try {
-      const response = await fetch(`http://localhost:5000${endpoint}`, {
+      const apiUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000";
+
+      const response = await fetch(`${apiUrl}${endpoint}`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         credentials: "include",
@@ -63,9 +65,6 @@ export const useAuthForm = (initialMode: boolean = true) => {
       if (isLoginMode) {
         login(data.user, data.accessToken || data.token);
 
-        // 🚀 THE FIX: HARD REFRESH HARD-NAVIGATION
-        // Soft router push memory cycle leak karta hai.
-        // Window location assignment se raw navigation complete pipelines fire hoti hain.
         const pendingInvite = localStorage.getItem("pendingInvite");
         if (pendingInvite) {
           localStorage.removeItem("pendingInvite");
