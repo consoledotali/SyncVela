@@ -30,7 +30,7 @@ export default function CurrentUserFooter() {
 
   const handleStrictLogout = async () => {
     try {
-      await fetch("http://localhost:5000/api/auth/logout", {
+      await fetch(`${process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000"}/api/auth/logout`, {
         method: "POST",
         credentials: "include",
       });
@@ -108,3 +108,4 @@ export default function CurrentUserFooter() {
     </>
   );
 }
+

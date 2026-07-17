@@ -33,7 +33,7 @@ export default function ManageMembersModal({
     setIsLoading(true);
     try {
       const res = await fetch(
-        `http://localhost:5000/api/workspaces/${activeWorkspaceId}/members`,
+        `${process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000"}/api/workspaces/${activeWorkspaceId}/members`,
         {
           headers: { Authorization: `Bearer ${token}` },
         },
@@ -57,7 +57,7 @@ export default function ManageMembersModal({
     setActionLoadingId(targetUserId);
     try {
       const res = await fetch(
-        "http://localhost:5000/api/workspaces/members/role",
+        `${process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000"}/api/workspaces/members/role`,
         {
           method: "PUT",
           headers: {
@@ -98,7 +98,7 @@ export default function ManageMembersModal({
     setActionLoadingId(targetUserId);
     try {
       const res = await fetch(
-        `http://localhost:5000/api/workspaces/${activeWorkspaceId}/members/${targetUserId}`,
+        `${process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000"}/api/workspaces/${activeWorkspaceId}/members/${targetUserId}`,
         {
           method: "DELETE",
           headers: { Authorization: `Bearer ${token}` },
@@ -224,3 +224,4 @@ export default function ManageMembersModal({
     </div>
   );
 }
+

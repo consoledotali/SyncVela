@@ -23,7 +23,7 @@ export const useDMEvents = (socket: any) => {
       try {
         const token = authState().token;
         const response = await fetch(
-          `http://localhost:5000/api/messages/dm/${roomId}`,
+          `${process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000"}/api/messages/dm/${roomId}`,
           { headers: { Authorization: `Bearer ${token}` } },
         );
 

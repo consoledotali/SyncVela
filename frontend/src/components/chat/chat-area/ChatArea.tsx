@@ -95,9 +95,9 @@ export default function ChatArea() {
 
       let endpoint = "";
       if (isChannelView && activeChannelId) {
-        endpoint = `http://localhost:5000/api/messages/channel/${activeChannelId}?cursor=${nextCursor}`;
+        endpoint = `${process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000"}/api/messages/channel/${activeChannelId}?cursor=${nextCursor}`;
       } else if (isDMView && activeRoomId) {
-        endpoint = `http://localhost:5000/api/messages/dm/${activeRoomId}?cursor=${nextCursor}`;
+        endpoint = `${process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000"}/api/messages/dm/${activeRoomId}?cursor=${nextCursor}`;
       } else {
         return;
       }
@@ -253,3 +253,4 @@ export default function ChatArea() {
     </div>
   );
 }
+

@@ -49,7 +49,7 @@ export default function ChannelMembersModal({
       setError("");
       try {
         const res = await fetch(
-          `http://localhost:5000/api/channels/${channelId}/members`,
+          `${process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000"}/api/channels/${channelId}/members`,
           {
             headers: { Authorization: `Bearer ${token}` },
           },
@@ -206,3 +206,4 @@ export default function ChannelMembersModal({
     </div>
   );
 }
+

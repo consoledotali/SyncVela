@@ -18,7 +18,7 @@ export const useChatInit = () => {
 
         // 🛡️ THE 404 FIX: Purani 'unread-counts' API hata di gayi hai.
         // Ab poora data explicitly getUsersForSidebar se aayega.
-        const usersRes = await fetch(`http://localhost:5000/api/users`, {
+        const usersRes = await fetch(`${process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000"}/api/users`, {
           headers,
         });
 
@@ -43,3 +43,4 @@ export const useChatInit = () => {
     fetchInitialData();
   }, [isAuthenticated, token, setUsers]);
 };
+

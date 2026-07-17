@@ -35,7 +35,7 @@ export default function InviteModal({ isOpen, onClose }: InviteModalProps) {
 
     try {
       const response = await fetch(
-        `http://localhost:5000/api/channels/${activeChannelId}/invite`,
+        `${process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000"}/api/channels/${activeChannelId}/invite`,
         {
           method: "POST",
           headers: {
@@ -148,3 +148,4 @@ export default function InviteModal({ isOpen, onClose }: InviteModalProps) {
     </div>
   );
 }
+

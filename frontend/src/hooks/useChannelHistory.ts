@@ -12,7 +12,7 @@ export const useChannelHistory = () => {
     const fetchHistory = async () => {
       try {
         const response = await fetch(
-          `http://localhost:5000/api/messages/channel/${activeChannelId}`,
+          `${process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000"}/api/messages/channel/${activeChannelId}`,
           { headers: { Authorization: `Bearer ${token}` } },
         );
 
@@ -42,3 +42,4 @@ export const useChannelHistory = () => {
     fetchHistory();
   }, [activeChannelId, token, setMessages, setPagination]);
 };
+

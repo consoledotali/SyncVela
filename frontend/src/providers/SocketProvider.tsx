@@ -84,7 +84,7 @@ export const SocketProvider = ({ children }: { children: React.ReactNode }) => {
         console.warn("⚠️ Access token expired. Attempting silent refresh...");
 
         try {
-          const res = await fetch("http://localhost:5000/api/auth/refresh", {
+          const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000"}/api/auth/refresh`, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             credentials: "include",
@@ -128,3 +128,4 @@ export const SocketProvider = ({ children }: { children: React.ReactNode }) => {
     </SocketContext.Provider>
   );
 };
+

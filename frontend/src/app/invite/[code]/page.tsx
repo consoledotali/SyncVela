@@ -32,7 +32,7 @@ export default function InvitePage() {
     const joinWorkspace = async () => {
       try {
         const response = await fetch(
-          `http://localhost:5000/api/workspaces/join/${inviteCode}`,
+          `${process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000"}/api/workspaces/join/${inviteCode}`,
           {
             method: "POST",
             headers: {

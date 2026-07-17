@@ -23,7 +23,7 @@ export default function CreateWorkspacePage() {
 
     setIsLoading(true);
     try {
-      const response = await fetch("http://localhost:5000/api/workspaces", {
+      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000"}/api/workspaces`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -114,3 +114,4 @@ export default function CreateWorkspacePage() {
     </div>
   );
 }
+

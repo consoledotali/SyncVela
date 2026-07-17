@@ -34,7 +34,7 @@ export default function ThreadDrawer() {
       setIsFetchingThread(true);
       try {
         const response = await fetch(
-          `http://localhost:5000/api/messages/thread/${activeThreadParent.id}`,
+          `${process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000"}/api/messages/thread/${activeThreadParent.id}`,
           { headers: { Authorization: `Bearer ${token}` } },
         );
         if (response.ok) {
@@ -224,3 +224,4 @@ export default function ThreadDrawer() {
     </div>
   );
 }
+
