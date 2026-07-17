@@ -64,7 +64,7 @@ export function AuthScreen({
   const handleGoogleSuccess = async (credentialResponse: any) => {
     try {
       const idToken = credentialResponse.credential;
-      const res = await fetch("http://localhost:5000/api/auth/google", {
+      const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000"}/api/auth/google`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         credentials: "include",
@@ -259,3 +259,4 @@ export function AuthScreen({
     </div>
   );
 }
+

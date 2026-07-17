@@ -23,8 +23,7 @@ const server = http.createServer(app);
 // Initialize WebSockets
 const io = initSocket(server);
 
-// 🟢 THE ENTERPRISE FIX: Bind Socket.io instance to Express global state
-app.set("io", io);
+app.set("socketio", io);
 
 // Middleware
 app.use(

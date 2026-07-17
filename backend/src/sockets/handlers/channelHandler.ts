@@ -17,7 +17,9 @@ export const registerChannelHandlers = (
   socket.on("send_channel_message", async (payload: any, callback: any) => {
     try {
       const textData = payload.text || payload.content;
-      const { channelId, attachments, tempId } = payload;
+
+      // 🚀 THREADING ENGINE: Extract parentMessageId from frontend payload
+      const { channelId, attachments, tempId, parentMessageId } = payload;
 
       const hasText = textData && textData.trim() !== "";
       const hasAttachments =
@@ -30,6 +32,10 @@ export const registerChannelHandlers = (
           content: hasText ? textData.trim() : null,
           channelId,
           senderId: userId,
+
+          // 🚀 THE THREAD LINK: Null if normal message, ID if it's a reply
+          parentMessageId: parentMessageId || null,
+
           attachments: hasAttachments
             ? {
                 create: attachments.map((att: any) => ({

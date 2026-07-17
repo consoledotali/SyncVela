@@ -18,7 +18,7 @@ export const useS3Upload = () => {
       let currentToken = useAuthStore.getState().token;
 
       const fetchPresignUrl = async (tokenToUse: string | null) => {
-        return fetch("http://localhost:5000/api/upload/presign", {
+        return fetch(`${process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000"}/api/upload/presign`, {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
@@ -36,7 +36,7 @@ export const useS3Upload = () => {
 
       if (presignRes.status === 401 || presignRes.status === 403) {
         const refreshRes = await fetch(
-          "http://localhost:5000/api/auth/refresh",
+          `${process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000"}/api/auth/refresh`,
           {
             method: "POST",
             credentials: "include",
@@ -91,3 +91,4 @@ export const useS3Upload = () => {
 
   return { uploadFile, isUploading };
 };
+

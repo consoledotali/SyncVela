@@ -57,11 +57,16 @@ export default function ChatHeader({
         ) : (
           selectedUser && (
             <>
-              <Avatar className="h-8 w-8 rounded-md border border-border">
+              <Avatar className="h-8 w-8 !rounded-md border border-border">
                 <AvatarImage
-                  src={`https://api.dicebear.com/7.x/initials/svg?seed=${selectedUser.name}`}
+                  src={
+                    selectedUser?.avatarUrl
+                      ? `${selectedUser.avatarUrl}?t=${new Date().getTime()}`
+                      : `https://api.dicebear.com/7.x/initials/svg?seed=${selectedUser?.name}`
+                  }
+                  className="object-cover w-full h-full !rounded-md"
                 />
-                <AvatarFallback className="rounded-md bg-primary/10 text-primary">
+                <AvatarFallback className="!rounded-md bg-primary/10 text-primary font-bold">
                   {selectedUser.name.substring(0, 2).toUpperCase()}
                 </AvatarFallback>
               </Avatar>

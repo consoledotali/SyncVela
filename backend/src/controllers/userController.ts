@@ -55,7 +55,7 @@ export const getUsersForSidebar = async (
         return {
           ...targetParticipant.user,
           roomId: c.id,
-          unreadCount, // 🔴 The DM Badge Counter
+          unreadCount,
           isActiveChat: true,
         };
       }),
@@ -94,5 +94,42 @@ export const getUsersForSidebar = async (
   } catch (error) {
     console.error("❌ Error fetching users:", error);
     res.status(500).json({ error: "Failed to fetch users" });
+  }
+};
+
+// 🚀 THE AVATAR UPDATE ENGINE
+export const updateAvatar = async (
+  req: AuthenticatedRequest,
+  res: Response,
+): Promise<void> => {
+  try {
+    const userId = req.user!.userId;
+    const { avatarUrl } = req.body;
+
+    if (!avatarUrl) {
+      res.status(400).json({ error: "Avatar URL is strictly required." });
+      return;
+    }
+
+    const updatedUser = await prisma.user.update({
+      where: { id: userId },
+      data: { avatarUrl },
+      select: { id: true, name: true, email: true, avatarUrl: true },
+    });
+
+    const io = req.app.get("socketio");
+    if (io) {
+      io.emit("user_avatar_updated", {
+        userId: updatedUser.id,
+        avatarUrl: updatedUser.avatarUrl,
+      });
+    }
+
+    res
+      .status(200)
+      .json({ message: "Avatar synced successfully", user: updatedUser });
+  } catch (error) {
+    console.error("❌ Avatar Update Database Failure:", error);
+    res.status(500).json({ error: "Failed to process avatar update." });
   }
 };

@@ -49,7 +49,7 @@ export default function ChannelMembersModal({
       setError("");
       try {
         const res = await fetch(
-          `http://localhost:5000/api/channels/${channelId}/members`,
+          `${process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000"}/api/channels/${channelId}/members`,
           {
             headers: { Authorization: `Bearer ${token}` },
           },
@@ -162,9 +162,11 @@ export default function ChannelMembersModal({
                       <Avatar className="h-9 w-9 border border-border">
                         <AvatarImage
                           src={
-                            member.avatarUrl ||
-                            `https://api.dicebear.com/7.x/initials/svg?seed=${member.name}`
+                            member?.avatarUrl
+                              ? `${member.avatarUrl}?t=${new Date().getTime()}`
+                              : `https://api.dicebear.com/7.x/initials/svg?seed=${member?.name}`
                           }
+                          className="object-cover"
                         />
                         <AvatarFallback className="bg-primary/10 text-primary font-bold text-xs">
                           {member.name.substring(0, 2).toUpperCase()}
@@ -204,3 +206,4 @@ export default function ChannelMembersModal({
     </div>
   );
 }
+

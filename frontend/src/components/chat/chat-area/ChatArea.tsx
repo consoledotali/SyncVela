@@ -8,6 +8,7 @@ import ChatInput from "@/src/components/chat/chat-input/ChatInput";
 import EmptyState from "./EmptyState";
 import ChatHeader from "./ChatHeader";
 import { MessageList } from "./MessageList";
+import ThreadDrawer from "../sidebar/ThreadDrawer";
 
 export default function ChatArea() {
   const { user, token } = useAuthStore();
@@ -51,7 +52,7 @@ export default function ChatArea() {
   const isDMView = !!selectedUser;
 
   // ==========================================
-  // 🚀 1. SYNCHRONOUS DOM ANCHOR (Pagination Fix)
+  // 🚀 1. SYNCHRONOUS DOM ANCHOR
   // ==========================================
   useLayoutEffect(() => {
     if (isPrependingRef.current && scrollContainerRef.current) {
@@ -78,15 +79,13 @@ export default function ChatArea() {
   }, [messages]);
 
   // ==========================================
-  // 🚀 2. SCROLL LISTENER (The Slack Threshold)
+  // 🚀 2. SCROLL LISTENER
   // ==========================================
   const handleScroll = async () => {
     if (!scrollContainerRef.current || !token) return;
     const { scrollTop, scrollHeight, clientHeight } =
       scrollContainerRef.current;
 
-    // 🟢 THE FIX: 100px Slack Leeway Threshold
-    // Agar user 100px se zyada upar hai tabhi usay "Scrolled Up" mano.
     isUserScrolledUpRef.current = scrollHeight - scrollTop - clientHeight > 100;
 
     if (scrollTop === 0 && hasMore && !isLoadingMore && nextCursor) {
@@ -96,9 +95,9 @@ export default function ChatArea() {
 
       let endpoint = "";
       if (isChannelView && activeChannelId) {
-        endpoint = `http://localhost:5000/api/messages/channel/${activeChannelId}?cursor=${nextCursor}`;
+        endpoint = `${process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000"}/api/messages/channel/${activeChannelId}?cursor=${nextCursor}`;
       } else if (isDMView && activeRoomId) {
-        endpoint = `http://localhost:5000/api/messages/dm/${activeRoomId}?cursor=${nextCursor}`;
+        endpoint = `${process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000"}/api/messages/dm/${activeRoomId}?cursor=${nextCursor}`;
       } else {
         return;
       }
@@ -124,6 +123,7 @@ export default function ChatArea() {
             attachmentUrl: msg.attachmentUrl,
             attachments: msg.attachments || [],
             sender: msg.sender,
+            _count: msg._count, // 🚀 Retain count for historical threads
           }));
 
           const remoteHasMore =
@@ -168,22 +168,15 @@ export default function ChatArea() {
       const isFirstLoad = lastMessageIdRef.current === null;
       const isMyMessage = currentLastMessage.senderId === user?.id;
 
-      // Slack Core Logic:
-      // 1. Agar first load hai, scroll it.
-      // 2. Agar user ne khud bheja hai, hamesha scroll it.
-      // 3. Agar user bottom ke qareeb hai aur naya message aaya hai, scroll it.
       if (isFirstLoad || isMyMessage || !isUserScrolledUpRef.current) {
         const forceScrollBottom = () => {
           container.scrollTop = container.scrollHeight;
         };
 
-        // 1st Hit: Instant Synchronous Scroll
         forceScrollBottom();
 
-        // 2nd Hit: DOM Paint Catch (requestAnimationFrame is industry standard here)
         requestAnimationFrame(() => {
           forceScrollBottom();
-          // 3rd Hit: Final fallback for heavy DOM renders (like images taking a split second)
           setTimeout(forceScrollBottom, 150);
         });
       }
@@ -192,7 +185,7 @@ export default function ChatArea() {
   }, [messages, user?.id]);
 
   // ==========================================
-  // 🚀 5. RESIZE OBSERVER (Dynamic Content Fix)
+  // 🚀 5. RESIZE OBSERVER
   // ==========================================
   useEffect(() => {
     const container = scrollContainerRef.current;
@@ -225,32 +218,39 @@ export default function ChatArea() {
     return <EmptyState activeWorkspace={activeWorkspace} />;
   }
 
+  // 🚀 7. THE MASTER LAYOUT ENGINE (ThreadDrawer Injected here)
   return (
-    <div className="flex flex-1 flex-col h-[100dvh] bg-background relative">
-      <ChatHeader
-        isChannelView={isChannelView}
-        activeChannel={activeChannel}
-        selectedUser={selectedUser}
-        onBack={() => {
-          setSelectedUser(null);
-          setActiveChannelId(null);
-        }}
-      />
+    <div className="flex flex-1 h-[100dvh] bg-background relative overflow-hidden">
+      <div className="flex flex-1 flex-col h-full bg-background relative min-w-0">
+        <ChatHeader
+          isChannelView={isChannelView}
+          activeChannel={activeChannel}
+          selectedUser={selectedUser}
+          onBack={() => {
+            setSelectedUser(null);
+            setActiveChannelId(null);
+          }}
+        />
 
-      <MessageList
-        ref={scrollContainerRef}
-        innerRef={innerContentRef}
-        messages={messages}
-        userId={user?.id}
-        isDMView={isDMView}
-        targetLastReadAt={targetLastReadAt}
-        isLoadingMore={isLoadingMore}
-        isCurrentlyTyping={isCurrentlyTyping}
-        selectedUser={selectedUser}
-        onScroll={handleScroll}
-      />
+        <MessageList
+          ref={scrollContainerRef}
+          innerRef={innerContentRef}
+          messages={messages}
+          userId={user?.id}
+          isDMView={isDMView}
+          targetLastReadAt={targetLastReadAt}
+          isLoadingMore={isLoadingMore}
+          isCurrentlyTyping={isCurrentlyTyping}
+          selectedUser={selectedUser}
+          onScroll={handleScroll}
+        />
 
-      <ChatInput />
+        <ChatInput />
+      </div>
+
+      {/* 🚀 THE ENTERPRISE COLLABORATION THREAD LAYOUT DRAWER */}
+      <ThreadDrawer />
     </div>
   );
 }
+

@@ -38,7 +38,7 @@ export default function ChannelList({ onOpenModal }: ChannelListProps) {
 
     if (token) {
       try {
-        await fetch(`http://localhost:5000/api/channels/mark-read`, {
+        await fetch(`${process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000"}/api/channels/mark-read`, {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
@@ -152,3 +152,4 @@ export default function ChannelList({ onOpenModal }: ChannelListProps) {
     </div>
   );
 }
+

@@ -14,7 +14,7 @@ export const useChannelFetcher = () => {
     const fetchChannels = async () => {
       try {
         const response = await fetch(
-          `http://localhost:5000/api/channels/${activeWorkspaceId}`,
+          `${process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000"}/api/channels/${activeWorkspaceId}`,
           { headers: { Authorization: `Bearer ${token}` } },
         );
 
@@ -44,3 +44,4 @@ export const useChannelFetcher = () => {
     fetchChannels();
   }, [activeWorkspaceId, token, setChannels, socket]);
 };
+

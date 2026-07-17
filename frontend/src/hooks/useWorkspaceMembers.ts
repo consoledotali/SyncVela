@@ -22,7 +22,7 @@ export const useWorkspaceMembers = () => {
     const fetchMembers = async () => {
       try {
         const response = await fetch(
-          `http://localhost:5000/api/workspaces/${activeWorkspaceId}/members`,
+          `${process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000"}/api/workspaces/${activeWorkspaceId}/members`,
           { headers: { Authorization: `Bearer ${token}` } },
         );
 
@@ -56,3 +56,4 @@ export const useWorkspaceMembers = () => {
     fetchMembers();
   }, [activeWorkspaceId, token, user, setUsers, setCurrentUserRole, socket]);
 };
+

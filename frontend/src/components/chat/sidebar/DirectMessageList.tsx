@@ -1,5 +1,5 @@
 import React from "react";
-import { useChatStore, SidebarUser } from "@/src/store/chat";
+import { useChatStore } from "@/src/store/chat";
 import { useSocket } from "@/src/providers/SocketProvider";
 import {
   Avatar,
@@ -27,7 +27,6 @@ export default function DirectMessageList() {
     }
   };
 
-  // 🟢 THE PRODUCTION ENGINE: Time -> Maximum Volume -> Alphabetical
   const sortedUsers = [...users].sort((a: any, b: any) => {
     const timeA = a.lastMessageAt ? new Date(a.lastMessageAt).getTime() : 0;
     const timeB = b.lastMessageAt ? new Date(b.lastMessageAt).getTime() : 0;
@@ -41,18 +40,14 @@ export default function DirectMessageList() {
         ? unreadCounts[b.id]
         : b.unreadCount || 0;
 
-    // 🏆 RULE 1: Chronological Time (Agar backend bhej de ya socket zinda ho)
     if (timeA !== timeB && (timeA > 0 || timeB > 0)) {
       return timeB - timeA;
     }
 
-    // 🏆 RULE 2: The Volume Tie-Breaker (Yeh 5 vs 1 ko fix karega)
-    // Jiske paas zyada count hai (e.g., 5 is greater than 1), usay force karke TOP par lao
     if (aCount !== bCount) {
       return bCount - aCount;
     }
 
-    // 🏆 RULE 3: Strict Alphabetical A-Z (Agar time bhi nahi aur dono ka count bhi barabar hai)
     return a.name.localeCompare(b.name);
   });
 
@@ -74,9 +69,10 @@ export default function DirectMessageList() {
             const isOnline = onlineUsers.includes(u.id);
             const isSelected = selectedUser?.id === u.id;
 
-            const storeCount = unreadCounts[u.id];
             const count =
-              storeCount !== undefined ? storeCount : u.unreadCount || 0;
+              unreadCounts[u.id] !== undefined
+                ? unreadCounts[u.id]
+                : u.unreadCount || 0;
             const isUnread = count > 0 && !isSelected;
 
             const initials = u.name
@@ -100,11 +96,16 @@ export default function DirectMessageList() {
               >
                 <div className="flex items-center gap-2 overflow-hidden">
                   <div className="relative shrink-0">
-                    <Avatar className="h-5 w-5 rounded-sm">
+                    <Avatar className="h-5 w-5 !rounded-md">
                       <AvatarImage
-                        src={`https://api.dicebear.com/7.x/initials/svg?seed=${u.name}`}
+                        src={
+                          u?.avatarUrl
+                            ? `${u.avatarUrl}?t=${new Date().getTime()}`
+                            : `https://api.dicebear.com/7.x/initials/svg?seed=${u?.name}`
+                        }
+                        className="object-cover w-full h-full !rounded-md"
                       />
-                      <AvatarFallback className="text-[8px] rounded-sm text-foreground/70 bg-muted-foreground/20">
+                      <AvatarFallback className="text-[8px] !rounded-md text-foreground/70 bg-muted-foreground/20 font-bold">
                         {initials}
                       </AvatarFallback>
                     </Avatar>

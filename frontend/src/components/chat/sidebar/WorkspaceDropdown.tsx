@@ -55,7 +55,7 @@ export default function WorkspaceDropdown({
     setIsDeleting(true);
     try {
       const response = await fetch(
-        `http://localhost:5000/api/workspaces/${activeWorkspaceId}`,
+        `${process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000"}/api/workspaces/${activeWorkspaceId}`,
         {
           method: "DELETE",
           headers: { Authorization: `Bearer ${token}` },
@@ -221,3 +221,4 @@ export default function WorkspaceDropdown({
     </>
   );
 }
+

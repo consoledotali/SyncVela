@@ -33,7 +33,7 @@ export default function NewChannelModal({
 
     setIsLoading(true);
     try {
-      const response = await fetch("http://localhost:5000/api/channels", {
+      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000"}/api/channels`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -148,3 +148,4 @@ export default function NewChannelModal({
     </div>
   );
 }
+
