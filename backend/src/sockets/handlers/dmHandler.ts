@@ -1,5 +1,6 @@
 import { Server, Socket } from "socket.io";
 import prisma from "../../config/db";
+import { signAttachments } from "../../utils/s3";
 
 export const registerDMHandlers = (
   io: Server,
@@ -129,6 +130,7 @@ export const registerDMHandlers = (
             ? {
                 create: attachments.map((att: any) => ({
                   url: att.url,
+                  fileKey: att.fileKey || null,
                   fileName: att.fileName || "attachment",
                   mimeType: att.mimeType || "application/octet-stream",
                   size: att.size || 0,
@@ -142,7 +144,13 @@ export const registerDMHandlers = (
         },
       });
 
-      const broadcastPayload = { ...savedMessage, tempId };
+      // Replace stored keys with short-lived signed URLs before broadcasting.
+      const signedMessage = {
+        ...savedMessage,
+        attachments: await signAttachments(savedMessage.attachments),
+      };
+
+      const broadcastPayload = { ...signedMessage, tempId };
 
       // Emit to sender and target strictly
       socket.emit("receiveMessage", broadcastPayload);

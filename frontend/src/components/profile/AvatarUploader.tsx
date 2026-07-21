@@ -32,7 +32,8 @@ export default function AvatarUploader() {
     try {
       // 1. FILE STORAGE UPLOAD
       // Agar token expire hua toh yeh hook background mein naya token mangwa kar Zustand mein rakh dega
-      const uploadData = await uploadFile(file);
+      // Avatars are uploaded public so they display directly and stay cached.
+      const uploadData = await uploadFile(file, "public");
 
       if (!uploadData || !uploadData.url) {
         throw new Error("S3 Cloud storage upload rejected the file.");

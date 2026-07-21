@@ -7,8 +7,10 @@ export const useS3Upload = () => {
   // 🚀 THE FIX: Return full object for Relational Database
   const uploadFile = async (
     file: File,
+    visibility: "public" | "private" = "private",
   ): Promise<{
     url: string;
+    fileKey: string;
     fileName: string;
     mimeType: string;
     size: number;
@@ -28,6 +30,7 @@ export const useS3Upload = () => {
             filename: file.name,
             contentType: file.type || "application/octet-stream",
             fileSize: file.size,
+            visibility,
           }),
         });
       };
@@ -61,22 +64,24 @@ export const useS3Upload = () => {
         throw new Error("Failed to get upload ticket");
       }
 
-      const { uploadUrl, finalFileUrl } = await presignRes.json();
+      const { uploadUrl, finalFileUrl, fileKey } = await presignRes.json();
 
+      // Content-Type must match what was signed. No ACL header — the object is
+      // private and served later via short-lived signed GET URLs.
       const uploadRes = await fetch(uploadUrl, {
         method: "PUT",
         headers: {
           "Content-Type": file.type || "application/octet-stream",
-          "x-amz-acl": "public-read",
         },
         body: file,
       });
 
       if (!uploadRes.ok) throw new Error("Failed to upload to cloud");
 
-      // 🚀 THE ENTERPRISE FIX: Return Metadata Object
+      // Return metadata. fileKey drives signed-URL generation on the server.
       return {
         url: finalFileUrl,
+        fileKey,
         fileName: file.name,
         mimeType: file.type || "application/octet-stream",
         size: file.size,
