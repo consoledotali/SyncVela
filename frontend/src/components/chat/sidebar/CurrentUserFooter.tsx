@@ -58,7 +58,7 @@ export default function CurrentUserFooter() {
               <AvatarImage
                 src={
                   user?.avatarUrl
-                    ? `${user.avatarUrl}?t=${new Date().getTime()}`
+                    ? user.avatarUrl
                     : `https://api.dicebear.com/7.x/initials/svg?seed=${user?.name}`
                 }
                 className="object-cover w-full h-full !rounded-md"

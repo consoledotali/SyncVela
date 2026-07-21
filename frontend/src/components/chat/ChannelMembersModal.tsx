@@ -163,7 +163,7 @@ export default function ChannelMembersModal({
                         <AvatarImage
                           src={
                             member?.avatarUrl
-                              ? `${member.avatarUrl}?t=${new Date().getTime()}`
+                              ? member.avatarUrl
                               : `https://api.dicebear.com/7.x/initials/svg?seed=${member?.name}`
                           }
                           className="object-cover"

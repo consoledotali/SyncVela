@@ -41,6 +41,7 @@ export const AttachmentRenderer = ({
             isMulti ? "object-cover" : "object-contain max-h-[360px]"
           }`}
           loading="lazy"
+          decoding="async"
         />
       </div>
     );

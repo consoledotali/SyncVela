@@ -100,7 +100,7 @@ export default function DirectMessageList() {
                       <AvatarImage
                         src={
                           u?.avatarUrl
-                            ? `${u.avatarUrl}?t=${new Date().getTime()}`
+                            ? u.avatarUrl
                             : `https://api.dicebear.com/7.x/initials/svg?seed=${u?.name}`
                         }
                         className="object-cover w-full h-full !rounded-md"

@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useEffect, useState } from "react";
 import { X, FileText, Image as ImageIcon, Loader2 } from "lucide-react";
 
 interface AttachmentPreviewProps {
@@ -15,6 +15,16 @@ export const AttachmentPreview = ({
   const isImage = attachment.type.startsWith("image/");
   const sizeMB = (attachment.size / 1024 / 1024).toFixed(2);
 
+  // Instant local thumbnail — no network. Object URL is revoked on unmount to
+  // avoid memory leaks.
+  const [thumbUrl, setThumbUrl] = useState<string | null>(null);
+  useEffect(() => {
+    if (!isImage) return;
+    const url = URL.createObjectURL(attachment);
+    setThumbUrl(url);
+    return () => URL.revokeObjectURL(url);
+  }, [attachment, isImage]);
+
   return (
     <div className="relative flex items-center gap-3 p-2 bg-background/50 rounded-lg border border-border w-max shadow-sm group transition-all">
       {/* 🟢 SLACK STYLE INDIVIDUAL SPINNER */}
@@ -24,8 +34,15 @@ export const AttachmentPreview = ({
         </div>
       )}
 
-      <div className="p-2 bg-muted rounded-md shadow-sm border border-border flex items-center justify-center">
-        {isImage ? (
+      <div className="p-2 bg-muted rounded-md shadow-sm border border-border flex items-center justify-center h-10 w-10 overflow-hidden">
+        {isImage && thumbUrl ? (
+          <img
+            src={thumbUrl}
+            alt={attachment.name}
+            className="h-full w-full object-cover rounded"
+            decoding="async"
+          />
+        ) : isImage ? (
           <ImageIcon className="h-5 w-5 text-primary" />
         ) : (
           <FileText className="h-5 w-5 text-blue-500" />

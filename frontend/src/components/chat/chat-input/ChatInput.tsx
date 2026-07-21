@@ -113,12 +113,22 @@ export default function ChatInput() {
       }
 
       const tempId = uuidv4();
-      const payload = {
+
+      // Optimistic (local) attachments use a blob URL so the sender sees an
+      // instant preview — the stored S3 url is private and would 403 in the
+      // browser. The real signed url arrives when history is re-fetched.
+      const localAttachments = uploadedAttachments.map((att, idx) => ({
+        ...att,
+        url: currentAttachments[idx]
+          ? URL.createObjectURL(currentAttachments[idx])
+          : att.url,
+      }));
+
+      const basePayload = {
         id: tempId,
         tempId,
         text: currentText || " ",
         senderId: user.id,
-        attachments: uploadedAttachments,
         createdAt: new Date().toISOString(),
         status: "pending" as const,
         sender: {
@@ -128,18 +138,22 @@ export default function ChatInput() {
         },
       };
 
+      // Local store gets blob-preview attachments; socket gets the real S3 refs.
+      const localPayload = { ...basePayload, attachments: localAttachments };
+      const wirePayload = { ...basePayload, attachments: uploadedAttachments };
+
       if (isChannelView && activeChannelId) {
-        addPendingMessage(activeChannelId, "channel", payload);
+        addPendingMessage(activeChannelId, "channel", localPayload);
         socket.emit("send_channel_message", {
           channelId: activeChannelId,
-          ...payload,
+          ...wirePayload,
         });
       } else if (isDMView && activeRoomId && selectedUser) {
-        addPendingMessage(activeRoomId, selectedUser.id, payload);
+        addPendingMessage(activeRoomId, selectedUser.id, localPayload);
         socket.emit("sendPrivateMessage", {
           roomId: activeRoomId,
           targetUserId: selectedUser.id,
-          ...payload,
+          ...wirePayload,
         });
       }
 
