@@ -1,5 +1,6 @@
 import { Server, Socket } from "socket.io";
 import prisma from "../../config/db";
+import { signAttachments } from "../../utils/s3";
 
 export const registerChannelHandlers = (
   io: Server,
@@ -27,6 +28,41 @@ export const registerChannelHandlers = (
 
       if (!channelId || (!hasText && !hasAttachments)) return;
 
+      // 🛡️ AUTHORIZATION: Sender ko is channel ka member hona chahiye.
+      // PUBLIC channel ke liye workspace-member kaafi, PRIVATE ke liye ChannelMember.
+      const channel = await prisma.channel.findUnique({
+        where: { id: channelId },
+        select: { workspaceId: true, type: true },
+      });
+      if (!channel) {
+        if (callback) callback({ error: "Channel not found" });
+        return;
+      }
+
+      const workspaceMember = await prisma.workspaceMember.findUnique({
+        where: {
+          userId_workspaceId: { userId, workspaceId: channel.workspaceId },
+        },
+        select: { userId: true },
+      });
+      if (!workspaceMember) {
+        if (callback)
+          callback({ error: "You are not a member of this workspace." });
+        return;
+      }
+
+      if (channel.type === "PRIVATE") {
+        const channelMember = await prisma.channelMember.findUnique({
+          where: { userId_channelId: { userId, channelId } },
+          select: { userId: true },
+        });
+        if (!channelMember) {
+          if (callback)
+            callback({ error: "You don't have access to this channel." });
+          return;
+        }
+      }
+
       const message = await prisma.message.create({
         data: {
           content: hasText ? textData.trim() : null,
@@ -40,6 +76,7 @@ export const registerChannelHandlers = (
             ? {
                 create: attachments.map((att: any) => ({
                   url: att.url,
+                  fileKey: att.fileKey || null,
                   fileName: att.fileName || "attachment",
                   mimeType: att.mimeType || "application/octet-stream",
                   size: att.size || 0,
@@ -53,7 +90,13 @@ export const registerChannelHandlers = (
         },
       });
 
-      const broadcastPayload = { ...message, tempId };
+      // Replace stored keys with short-lived signed URLs before broadcasting.
+      const signedMessage = {
+        ...message,
+        attachments: await signAttachments(message.attachments),
+      };
+
+      const broadcastPayload = { ...signedMessage, tempId };
       io.to(`channel_${channelId}`).emit(
         "receive_channel_message",
         broadcastPayload,

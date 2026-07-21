@@ -123,7 +123,7 @@ export const joinWorkspace = async (
       },
     });
 
-    const io = req.app.get("io");
+    const io = req.app.get("socketio");
 
     if (io) {
       io.to(workspace.id).emit("workspace_member_joined", {
@@ -296,7 +296,7 @@ export const updateWorkspaceMemberRole = async (
       include: { user: { select: { id: true, name: true } } },
     });
 
-    const io = req.app.get("io");
+    const io = req.app.get("socketio");
     if (io) {
       io.to(workspaceId).emit("member_role_updated", {
         workspaceId,
@@ -366,7 +366,7 @@ export const removeWorkspaceMember = async (
       });
     });
 
-    const io = req.app.get("io");
+    const io = req.app.get("socketio");
     if (io) {
       io.to(workspaceId).emit("member_kicked", {
         workspaceId,

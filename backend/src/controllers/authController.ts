@@ -121,9 +121,11 @@ export const refreshAccessToken = async (
 
     const { accessToken } = await authService.refresh(refreshToken);
 
-    // Sync state response cookie update taake layout fetch parallel blocks freeze na hon
+    // Sync state response cookie update taake layout fetch parallel blocks freeze na hon.
+    // httpOnly: true — frontend token JSON body/Authorization header se leta hai,
+    // is cookie ko JS se padhne ki zaroorat nahi, isliye XSS surface band.
     res.cookie("accessToken", accessToken, {
-      httpOnly: false,
+      httpOnly: true,
       secure: process.env.NODE_ENV === "production",
       sameSite: "lax",
       maxAge: 15 * 60 * 1000,
