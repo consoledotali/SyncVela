@@ -208,6 +208,7 @@ model Message {
 model Attachment {
   id        String   @id @default(cuid())
   url       String
+  fileKey   String?
   fileName  String
   mimeType  String
   size      Int

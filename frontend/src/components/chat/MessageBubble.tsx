@@ -177,7 +177,7 @@ export default function MessageBubble({
             <AvatarImage
               src={
                 msg.sender?.avatarUrl
-                  ? `${msg.sender.avatarUrl}?t=${new Date(msg.createdAt).getTime()}`
+                  ? msg.sender.avatarUrl
                   : `https://api.dicebear.com/7.x/initials/svg?seed=${senderName}`
               }
               // 🚀 THE FIX: Force the image to map exactly to the parent's corners

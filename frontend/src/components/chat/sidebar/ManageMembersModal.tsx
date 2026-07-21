@@ -160,7 +160,7 @@ export default function ManageMembersModal({
                     <AvatarImage
                       src={
                         member?.avatarUrl
-                          ? `${member.avatarUrl}?t=${new Date().getTime()}`
+                          ? member.avatarUrl
                           : `https://api.dicebear.com/7.x/initials/svg?seed=${member?.name}`
                       }
                       className="object-cover w-full h-full !rounded-md"

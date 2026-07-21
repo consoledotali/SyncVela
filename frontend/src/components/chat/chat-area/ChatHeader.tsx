@@ -61,7 +61,7 @@ export default function ChatHeader({
                 <AvatarImage
                   src={
                     selectedUser?.avatarUrl
-                      ? `${selectedUser.avatarUrl}?t=${new Date().getTime()}`
+                      ? selectedUser.avatarUrl
                       : `https://api.dicebear.com/7.x/initials/svg?seed=${selectedUser?.name}`
                   }
                   className="object-cover w-full h-full !rounded-md"

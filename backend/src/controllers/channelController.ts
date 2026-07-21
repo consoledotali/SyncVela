@@ -46,7 +46,7 @@ export const createChannel = async (
     });
 
     // 🚀 THE REAL-TIME SYNC FIX: Broadcast the new public channel to the entire workspace
-    const io = req.app.get("io");
+    const io = req.app.get("socketio");
     if (io && type === "PUBLIC") {
       io.to(workspaceId).emit("channel_created", channel);
     }

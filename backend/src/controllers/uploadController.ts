@@ -1,15 +1,6 @@
 import { Request, Response } from "express";
-import { S3Client, PutObjectCommand } from "@aws-sdk/client-s3";
-import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
-
-const s3Client = new S3Client({
-  region: "us-east-1",
-  endpoint: `https://${process.env.DO_SPACES_ENDPOINT}`,
-  credentials: {
-    accessKeyId: process.env.DO_SPACES_KEY as string,
-    secretAccessKey: process.env.DO_SPACES_SECRET as string,
-  },
-});
+import { randomUUID } from "crypto";
+import { createUploadUrl } from "../utils/s3";
 
 const MAX_FILE_SIZE = 100 * 1024 * 1024; // 100MB Strict Limit
 
@@ -18,7 +9,7 @@ export const generatePresignedUrl = async (
   res: Response,
 ): Promise<void> => {
   try {
-    const { filename, contentType, fileSize } = req.body;
+    const { filename, contentType, fileSize, visibility } = req.body;
 
     if (!filename || fileSize === undefined) {
       res
@@ -32,23 +23,26 @@ export const generatePresignedUrl = async (
       return;
     }
 
-    // 🚀 THE SLACK FIX: Accept ALL formats. 
-    // Agar browser format na bhej paye, toh usay raw binary treat karo.
+    // Accept ALL formats. If the browser can't determine one, treat as raw binary.
     const finalContentType = contentType || "application/octet-stream";
 
-    const uniqueFileKey = `chat-attachments/${Date.now()}-${filename.replace(/[^a-zA-Z0-9.-]/g, "")}`;
+    // Avatars are public (displayed directly); chat attachments stay private.
+    const isPublic = visibility === "public";
+    const folder = isPublic ? "avatars" : "chat-attachments";
 
-    const command = new PutObjectCommand({
-      Bucket: process.env.DO_SPACES_BUCKET as string,
-      Key: uniqueFileKey,
-      ContentType: finalContentType,
-      ACL: "public-read",
-    });
+    // Unguessable key (randomUUID) so object paths can't be enumerated.
+    const safeName = filename.replace(/[^a-zA-Z0-9.-]/g, "");
+    const uniqueFileKey = `${folder}/${randomUUID()}-${safeName}`;
 
-    const uploadUrl = await getSignedUrl(s3Client, command, { expiresIn: 120 });
+    const uploadUrl = await createUploadUrl(
+      uniqueFileKey,
+      finalContentType,
+      isPublic ? "public" : "private",
+    );
 
     res.json({
       uploadUrl,
+      // Stored for reference; actual access always goes through signed GET URLs.
       finalFileUrl: `https://${process.env.DO_SPACES_BUCKET}.${process.env.DO_SPACES_ENDPOINT}/${uniqueFileKey}`,
       fileKey: uniqueFileKey,
     });
