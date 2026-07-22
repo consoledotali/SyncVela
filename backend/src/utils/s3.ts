@@ -29,13 +29,25 @@ export const createUploadUrl = (
   contentType: string,
   visibility: "public" | "private" = "private",
 ): Promise<string> => {
+  const isPublic = visibility === "public";
   const command = new PutObjectCommand({
     Bucket: BUCKET,
     Key: fileKey,
     ContentType: contentType,
-    ACL: visibility === "public" ? "public-read" : "private",
+    // Only set ACL for public objects. Private is the Space default, so leaving
+    // it off keeps the signature simple (no acl header required on upload).
+    ...(isPublic ? { ACL: "public-read" as const } : {}),
   });
-  return getSignedUrl(s3Client, command, { expiresIn: 120 });
+  // DigitalOcean Spaces only honors the ACL when it arrives as a REQUEST HEADER,
+  // not as a hoisted query param. Marking x-amz-acl unhoistable forces the SDK
+  // to keep it as a signed header — the client must then send that exact header
+  // on the PUT (see useS3Upload) or the object silently falls back to private.
+  return getSignedUrl(s3Client, command, {
+    expiresIn: 120,
+    ...(isPublic
+      ? { unhoistableHeaders: new Set(["x-amz-acl"]) }
+      : {}),
+  });
 };
 
 // Presigned GET URL — grants temporary read access to a private object.
