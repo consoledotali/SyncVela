@@ -247,6 +247,30 @@ export const getChannelMembers = async (
       }
     }
 
+    // PUBLIC channels belong to the whole workspace, so their member list is
+    // every workspace member — not just the ChannelMember read-state rows (only
+    // the creator gets one of those at creation). This also makes newly-joined
+    // workspace members appear automatically on the next fetch. PRIVATE channels
+    // stay restricted to their explicit ChannelMember rows.
+    if (channel.type === "PUBLIC") {
+      const workspaceMembers = await prisma.workspaceMember.findMany({
+        where: { workspaceId: channel.workspaceId },
+        include: {
+          user: {
+            select: { id: true, name: true, avatarUrl: true, email: true },
+          },
+        },
+      });
+
+      const formattedMembers = workspaceMembers.map((wm) => ({
+        ...wm.user,
+        role: wm.role,
+      }));
+
+      res.status(200).json(formattedMembers);
+      return;
+    }
+
     const channelMembers = await prisma.channelMember.findMany({
       where: { channelId },
       include: {
