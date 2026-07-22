@@ -12,6 +12,7 @@ import { AttachmentRenderer } from "./message/AttachmentRenderer";
 import { getFileDetails } from "./message/utils";
 import { MessageStatus } from "./message/MessageStatus";
 import { MessageActions } from "./message/MessageActions";
+import { Lightbox, LightboxItem } from "./message/Lightbox";
 
 export default function MessageBubble({
   msg,
@@ -39,6 +40,7 @@ export default function MessageBubble({
 
   const [isEditing, setIsEditing] = useState(false);
   const [editText, setEditText] = useState(msg.text || "");
+  const [lightboxIndex, setLightboxIndex] = useState<number | null>(null);
 
   const isChannelView = !!activeChannelId;
   const isTargetOnline = selectedUser
@@ -64,15 +66,42 @@ export default function MessageBubble({
 
   const mediaFiles = attachments.filter((att: any) => {
     if (!att || !att.url) return false;
-    const type = getFileDetails(att.url).type;
+    // Pass mimeType so optimistic blob-URL attachments (no file extension) are
+    // still classified correctly — otherwise the sender's own images fall into
+    // the doc bucket and render full-width instead of in the media grid.
+    const type = getFileDetails(att.url, att.mimeType).type;
     return type === "image" || type === "video";
   });
 
   const docFiles = attachments.filter((att: any) => {
     if (!att || !att.url) return false;
-    const type = getFileDetails(att.url).type;
+    const type = getFileDetails(att.url, att.mimeType).type;
     return type !== "image" && type !== "video";
   });
+
+  // Attachments that can be previewed inside the shared Lightbox gallery:
+  // all media plus PDFs. Order matters — the index passed to onOpen must match
+  // this list so the correct item opens and the thumbnail rail lines up.
+  const isPreviewable = (att: any) => {
+    const type = getFileDetails(att.url, att.mimeType).type;
+    if (type === "image" || type === "video") return true;
+    return (
+      type === "document" &&
+      (att.mimeType?.includes("pdf") ||
+        att.url.split("?")[0].toLowerCase().endsWith(".pdf"))
+    );
+  };
+
+  const previewables: LightboxItem[] = attachments
+    .filter((att: any) => att && att.url && isPreviewable(att))
+    .map((att: any) => ({
+      url: att.url,
+      fileName: att.fileName,
+      mimeType: att.mimeType,
+    }));
+
+  const previewIndexOf = (att: any) =>
+    previewables.findIndex((p) => p.url === att.url);
 
   const handleDelete = () => {
     if (!socket || !canDelete) return;
@@ -278,6 +307,7 @@ export default function MessageBubble({
                 key={att.id || index}
                 attachment={att}
                 isMulti={mediaFiles.length > 1}
+                onOpen={() => setLightboxIndex(previewIndexOf(att))}
               />
             ))}
           </div>
@@ -290,9 +320,22 @@ export default function MessageBubble({
                 key={att.id || index}
                 attachment={att}
                 isMulti={false}
+                onOpen={
+                  isPreviewable(att)
+                    ? () => setLightboxIndex(previewIndexOf(att))
+                    : undefined
+                }
               />
             ))}
           </div>
+        )}
+
+        {lightboxIndex !== null && previewables.length > 0 && (
+          <Lightbox
+            items={previewables}
+            startIndex={lightboxIndex}
+            onClose={() => setLightboxIndex(null)}
+          />
         )}
 
         {!isInsideThreadPanel && replyCount > 0 && (
