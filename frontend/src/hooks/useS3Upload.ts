@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { useAuthStore } from "@/src/store/authStore";
+import { authFetch } from "@/src/lib/authFetch";
 
 export const useS3Upload = () => {
   const [isUploading, setIsUploading] = useState(false);
@@ -17,14 +17,14 @@ export const useS3Upload = () => {
   } | null> => {
     setIsUploading(true);
     try {
-      let currentToken = useAuthStore.getState().token;
-
-      const fetchPresignUrl = async (tokenToUse: string | null) => {
-        return fetch(`${process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000"}/api/upload/presign`, {
+      // authFetch attaches the token and handles the 401 → refresh → retry
+      // dance internally, so no manual refresh block is needed here.
+      const presignRes = await authFetch(
+        `${process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000"}/api/upload/presign`,
+        {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
-            Authorization: `Bearer ${tokenToUse}`,
           },
           body: JSON.stringify({
             filename: file.name,
@@ -32,47 +32,28 @@ export const useS3Upload = () => {
             fileSize: file.size,
             visibility,
           }),
-        });
+        },
+      );
+
+      if (!presignRes.ok) throw new Error("Failed to get upload ticket");
+
+      const { uploadUrl, finalFileUrl, fileKey, visibility: signedVisibility } =
+        await presignRes.json();
+
+      // Build PUT headers. Content-Type must match what was signed. For public
+      // objects the server signed an x-amz-acl header, so we MUST send that exact
+      // header back or DigitalOcean Spaces stores the object as private → 403 on
+      // read. Private objects need no ACL header (private is the Space default).
+      const putHeaders: Record<string, string> = {
+        "Content-Type": file.type || "application/octet-stream",
       };
-
-      let presignRes = await fetchPresignUrl(currentToken);
-
-      if (presignRes.status === 401 || presignRes.status === 403) {
-        const refreshRes = await fetch(
-          `${process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000"}/api/auth/refresh`,
-          {
-            method: "POST",
-            credentials: "include",
-          },
-        );
-
-        if (!refreshRes.ok) {
-          useAuthStore.getState().logout();
-          window.location.href = "/auth/login";
-          throw new Error("Session completely expired. Please log in again.");
-        }
-
-        const authData = await refreshRes.json();
-        const newToken = authData.accessToken || authData.token;
-
-        useAuthStore.setState({ token: newToken });
-        currentToken = newToken;
-
-        presignRes = await fetchPresignUrl(currentToken);
-        if (!presignRes.ok) throw new Error("Retry failed.");
-      } else if (!presignRes.ok) {
-        throw new Error("Failed to get upload ticket");
+      if ((signedVisibility ?? visibility) === "public") {
+        putHeaders["x-amz-acl"] = "public-read";
       }
 
-      const { uploadUrl, finalFileUrl, fileKey } = await presignRes.json();
-
-      // Content-Type must match what was signed. No ACL header — the object is
-      // private and served later via short-lived signed GET URLs.
       const uploadRes = await fetch(uploadUrl, {
         method: "PUT",
-        headers: {
-          "Content-Type": file.type || "application/octet-stream",
-        },
+        headers: putHeaders,
         body: file,
       });
 

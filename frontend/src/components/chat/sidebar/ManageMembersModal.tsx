@@ -4,6 +4,7 @@ import React, { useEffect, useState } from "react";
 import { useChatStore } from "@/src/store/chat";
 import { useAuthStore } from "@/src/store/authStore";
 import { X, ShieldAlert, Loader2, ShieldCheck, UserX } from "lucide-react";
+import { authFetch } from "@/src/lib/authFetch";
 import {
   Avatar,
   AvatarFallback,
@@ -32,11 +33,8 @@ export default function ManageMembersModal({
     if (!activeWorkspaceId || !token) return;
     setIsLoading(true);
     try {
-      const res = await fetch(
+      const res = await authFetch(
         `${process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000"}/api/workspaces/${activeWorkspaceId}/members`,
-        {
-          headers: { Authorization: `Bearer ${token}` },
-        },
       );
       if (res.ok) {
         const data = await res.json();
@@ -56,13 +54,12 @@ export default function ManageMembersModal({
   const handleRoleChange = async (targetUserId: string, newRole: string) => {
     setActionLoadingId(targetUserId);
     try {
-      const res = await fetch(
+      const res = await authFetch(
         `${process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000"}/api/workspaces/members/role`,
         {
           method: "PUT",
           headers: {
             "Content-Type": "application/json",
-            Authorization: `Bearer ${token}`,
           },
           body: JSON.stringify({
             workspaceId: activeWorkspaceId,
@@ -97,11 +94,10 @@ export default function ManageMembersModal({
 
     setActionLoadingId(targetUserId);
     try {
-      const res = await fetch(
+      const res = await authFetch(
         `${process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000"}/api/workspaces/${activeWorkspaceId}/members/${targetUserId}`,
         {
           method: "DELETE",
-          headers: { Authorization: `Bearer ${token}` },
         },
       );
 

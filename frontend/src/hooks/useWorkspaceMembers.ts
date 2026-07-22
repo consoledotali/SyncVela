@@ -2,6 +2,7 @@ import { useEffect } from "react";
 import { useAuthStore } from "@/src/store/authStore";
 import { useChatStore } from "@/src/store/chat";
 import { useSocket } from "@/src/providers/SocketProvider";
+import { authFetch } from "@/src/lib/authFetch";
 
 export const useWorkspaceMembers = () => {
   const { token, user } = useAuthStore();
@@ -21,9 +22,8 @@ export const useWorkspaceMembers = () => {
 
     const fetchMembers = async () => {
       try {
-        const response = await fetch(
+        const response = await authFetch(
           `${process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000"}/api/workspaces/${activeWorkspaceId}/members`,
-          { headers: { Authorization: `Bearer ${token}` } },
         );
 
         if (response.ok) {

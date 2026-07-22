@@ -1,6 +1,7 @@
 import { useEffect } from "react";
 import { useAuthStore } from "@/src/store/authStore";
 import { useChatStore } from "@/src/store/chat";
+import { authFetch } from "@/src/lib/authFetch";
 
 export const useChatInit = () => {
   const { isAuthenticated, token } = useAuthStore();
@@ -11,16 +12,7 @@ export const useChatInit = () => {
 
     const fetchInitialData = async () => {
       try {
-        const headers = {
-          Authorization: `Bearer ${token}`,
-          "Content-Type": "application/json",
-        };
-
-        // 🛡️ THE 404 FIX: Purani 'unread-counts' API hata di gayi hai.
-        // Ab poora data explicitly getUsersForSidebar se aayega.
-        const usersRes = await fetch(`${process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000"}/api/users`, {
-          headers,
-        });
+        const usersRes = await authFetch(`${process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000"}/api/users`);
 
         if (usersRes.ok) {
           const data = await usersRes.json();

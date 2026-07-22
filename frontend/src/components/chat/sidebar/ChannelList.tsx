@@ -5,6 +5,7 @@ import { useSocket } from "@/src/providers/SocketProvider";
 import { Hash, Lock, Plus } from "lucide-react";
 import { Badge } from "@/src/components/ui/badge";
 import { usePermissions } from "@/src/hooks/usePermissions"; // 🚀 THE RBAC ENGINE IMPORT
+import { authFetch } from "@/src/lib/authFetch";
 
 interface ChannelListProps {
   onOpenModal: () => void;
@@ -38,11 +39,10 @@ export default function ChannelList({ onOpenModal }: ChannelListProps) {
 
     if (token) {
       try {
-        await fetch(`${process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000"}/api/channels/mark-read`, {
+        await authFetch(`${process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000"}/api/channels/mark-read`, {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
-            Authorization: `Bearer ${token}`,
           },
           body: JSON.stringify({ channelId: channel.id }),
         });

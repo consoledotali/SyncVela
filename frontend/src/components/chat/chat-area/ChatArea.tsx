@@ -9,6 +9,7 @@ import EmptyState from "./EmptyState";
 import ChatHeader from "./ChatHeader";
 import { MessageList } from "./MessageList";
 import ThreadDrawer from "../sidebar/ThreadDrawer";
+import { authFetch } from "@/src/lib/authFetch";
 
 export default function ChatArea() {
   const { user, token } = useAuthStore();
@@ -107,9 +108,7 @@ export default function ChatArea() {
       isPrependingRef.current = true;
 
       try {
-        const res = await fetch(endpoint, {
-          headers: { Authorization: `Bearer ${token}` },
-        });
+        const res = await authFetch(endpoint);
 
         if (res.ok) {
           const data = await res.json();

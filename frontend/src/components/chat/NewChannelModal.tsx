@@ -7,6 +7,7 @@ import { Input } from "@/src/components/ui/input";
 import { useChatStore } from "@/src/store/chat";
 import { useAuthStore } from "@/src/store/authStore";
 import { useSocket } from "@/src/providers/SocketProvider";
+import { authFetch } from "@/src/lib/authFetch";
 
 interface NewChannelModalProps {
   isOpen: boolean;
@@ -33,11 +34,10 @@ export default function NewChannelModal({
 
     setIsLoading(true);
     try {
-      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000"}/api/channels`, {
+      const response = await authFetch(`${process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000"}/api/channels`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`,
         },
         body: JSON.stringify({
           name: name.trim().toLowerCase(),

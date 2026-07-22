@@ -8,6 +8,7 @@ import {
   AvatarImage,
 } from "@/src/components/ui/avatar";
 import { useAuthStore } from "@/src/store/authStore";
+import { authFetch } from "@/src/lib/authFetch";
 
 interface ChannelMembersModalProps {
   isOpen: boolean;
@@ -48,11 +49,8 @@ export default function ChannelMembersModal({
       setIsLoading(true);
       setError("");
       try {
-        const res = await fetch(
+        const res = await authFetch(
           `${process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000"}/api/channels/${channelId}/members`,
-          {
-            headers: { Authorization: `Bearer ${token}` },
-          },
         );
 
         const data = await res.json();

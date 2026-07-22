@@ -1,6 +1,7 @@
 import { useEffect } from "react";
 import { useAuthStore } from "@/src/store/authStore";
 import { useChatStore } from "@/src/store/chat";
+import { authFetch } from "@/src/lib/authFetch";
 
 export const useChannelHistory = () => {
   const { token } = useAuthStore();
@@ -11,9 +12,8 @@ export const useChannelHistory = () => {
 
     const fetchHistory = async () => {
       try {
-        const response = await fetch(
+        const response = await authFetch(
           `${process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000"}/api/messages/channel/${activeChannelId}`,
-          { headers: { Authorization: `Bearer ${token}` } },
         );
 
         if (response.ok) {

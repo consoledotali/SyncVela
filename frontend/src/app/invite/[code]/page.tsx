@@ -5,6 +5,7 @@ import { useParams, useRouter } from "next/navigation";
 import { useAuthStore } from "@/src/store/authStore";
 import { Loader2, ShieldCheck, XCircle, UserCheck } from "lucide-react";
 import { Button } from "@/src/components/ui/button";
+import { authFetch } from "@/src/lib/authFetch";
 
 export default function InvitePage() {
   const params = useParams();
@@ -31,13 +32,10 @@ export default function InvitePage() {
 
     const joinWorkspace = async () => {
       try {
-        const response = await fetch(
+        const response = await authFetch(
           `${process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000"}/api/workspaces/join/${inviteCode}`,
           {
             method: "POST",
-            headers: {
-              Authorization: `Bearer ${token}`,
-            },
           },
         );
 

@@ -5,6 +5,7 @@ import { useChatStore } from "@/src/store/chat";
 import { useAuthStore } from "@/src/store/authStore";
 import { useSocket } from "@/src/providers/SocketProvider"; // 🟢 ADDED SOCKET
 import { X, UserPlus, Loader2, Check } from "lucide-react";
+import { authFetch } from "@/src/lib/authFetch";
 
 interface InviteModalProps {
   isOpen: boolean;
@@ -34,13 +35,12 @@ export default function InviteModal({ isOpen, onClose }: InviteModalProps) {
     setIsLoading(true);
 
     try {
-      const response = await fetch(
+      const response = await authFetch(
         `${process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000"}/api/channels/${activeChannelId}/invite`,
         {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
-            Authorization: `Bearer ${token}`,
           },
           body: JSON.stringify({ userIds: selectedIds }),
         },

@@ -9,6 +9,7 @@ import {
 } from "@/src/components/ui/avatar";
 import { Camera, Loader2 } from "lucide-react";
 import { useS3Upload } from "@/src/hooks/useS3Upload";
+import { authFetch } from "@/src/lib/authFetch";
 
 export default function AvatarUploader() {
   const { user, login } = useAuthStore();
@@ -41,23 +42,11 @@ export default function AvatarUploader() {
 
       setIsUpdatingDB(true);
 
-      // 2. FETCH LATEST TOKEN (Closure Trap Bypass)
-      // Kyunke S3 uploader ne shayad naya token fetch kar liya ho.
-      const latestToken = useAuthStore.getState().token;
-
-      // 🛡️ TYPE SAFETY GUARD: TypeScript ko strict guarantee do ke token null nahi hai
-      if (!latestToken) {
-        throw new Error(
-          "Authentication token was lost during the upload pipeline.",
-        );
-      }
-
-      // 3. DATABASE RECORD SYNC
-      const updateRes = await fetch(`${process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000"}/api/users/avatar`, {
+      // 3. DATABASE RECORD SYNC — authFetch handles token attach + refresh.
+      const updateRes = await authFetch(`${process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000"}/api/users/avatar`, {
         method: "PUT",
         headers: {
           "Content-Type": "application/json",
-          Authorization: `Bearer ${latestToken}`,
         },
         body: JSON.stringify({ avatarUrl: uploadData.url }),
       });
@@ -67,6 +56,14 @@ export default function AvatarUploader() {
       }
 
       const updateData = await updateRes.json();
+
+      // authFetch may have refreshed the token mid-flight; read the latest.
+      const latestToken = useAuthStore.getState().token;
+      if (!latestToken) {
+        throw new Error(
+          "Authentication token was lost during the upload pipeline.",
+        );
+      }
 
       // 4. GLOBAL STATE OVERWRITE WITH CACHE BUSTING
       const updatedUserWithCache = {
