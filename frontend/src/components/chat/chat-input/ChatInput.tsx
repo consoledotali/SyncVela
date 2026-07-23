@@ -12,6 +12,7 @@ import { v4 as uuidv4 } from "uuid";
 export default function ChatInput() {
   const [message, setMessage] = useState("");
   const [attachments, setAttachments] = useState<File[]>([]);
+  const [uploadProgress, setUploadProgress] = useState<Record<number, number>>({});
   const [isBatchSending, setIsBatchSending] = useState(false);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -105,11 +106,18 @@ export default function ChatInput() {
       let uploadedAttachments: any[] = [];
 
       if (currentAttachments.length > 0) {
-        const uploadPromises = currentAttachments.map((file) =>
-          uploadFile(file),
+        const progressMap: Record<number, number> = {};
+        currentAttachments.forEach((_, i) => (progressMap[i] = 0));
+        setUploadProgress(progressMap);
+
+        const uploadPromises = currentAttachments.map((file, i) =>
+          uploadFile(file, "private", (pct) =>
+            setUploadProgress((prev) => ({ ...prev, [i]: pct })),
+          ),
         );
         const results = await Promise.all(uploadPromises);
         uploadedAttachments = results.filter((att) => att !== null);
+        setUploadProgress({});
       }
 
       const tempId = uuidv4();
@@ -183,6 +191,7 @@ export default function ChatInput() {
                 <AttachmentPreview
                   attachment={file}
                   isUploading={isSystemBusy}
+                  progress={uploadProgress[idx] ?? 0}
                   onRemove={() => removeAttachment(idx)}
                 />
               </div>

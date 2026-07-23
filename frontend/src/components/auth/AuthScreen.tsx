@@ -2,6 +2,7 @@
 
 import React, { useEffect } from "react";
 import { useRouter } from "next/navigation";
+import axios from "axios";
 import { useAuthStore } from "@/src/store/authStore";
 import { useAuthForm } from "@/src/hooks/useAuthForm";
 import { GoogleOAuthProvider, GoogleLogin } from "@react-oauth/google";
@@ -64,15 +65,15 @@ export function AuthScreen({
   const handleGoogleSuccess = async (credentialResponse: any) => {
     try {
       const idToken = credentialResponse.credential;
-      const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000"}/api/auth/google`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        credentials: "include",
-        body: JSON.stringify({ idToken }),
-      });
+      const res = await axios.post(
+        `${process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000"}/api/auth/google`,
+        { idToken },
+        { withCredentials: true, validateStatus: () => true },
+      );
 
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || "Google Auth Failed");
+      const data = res.data;
+      if (res.status < 200 || res.status >= 300)
+        throw new Error(data?.error || "Google Auth Failed");
 
       // Yeh state update trigger karega aur upar wala useEffect user ko theek jagah route kar dega
       login(data.user, data.accessToken);

@@ -86,11 +86,23 @@ export const useWorkspaceEvents = (socket: any) => {
       }
     };
 
+    // 🚀 PRIVATE CHANNEL REVOCATION: When demoted to MEMBER/GUEST, remove
+    // private channels the user no longer has access to from the sidebar.
+    const handlePrivateChannelsRevoked = ({ channelIds }: { channelIds: string[] }) => {
+      const state = chatState();
+      const revokedSet = new Set(channelIds);
+      state.setChannels(state.channels.filter((c) => !revokedSet.has(c.id)));
+      if (state.activeChannelId && revokedSet.has(state.activeChannelId)) {
+        state.setActiveChannelId(null);
+      }
+    };
+
     // BIND SOCKET LISTENERS
     socket.on("workspace_member_joined", handleMemberJoined);
     socket.on("member_role_updated", handleRoleUpdated);
     socket.on("member_kicked", handleMemberKicked);
     socket.on("workspace_revoked", handleWorkspaceRevoked);
+    socket.on("private_channels_revoked", handlePrivateChannelsRevoked);
 
     return () => {
       // UNBIND ON UNMOUNT (Memory leak prevention)
@@ -98,6 +110,7 @@ export const useWorkspaceEvents = (socket: any) => {
       socket.off("member_role_updated", handleRoleUpdated);
       socket.off("member_kicked", handleMemberKicked);
       socket.off("workspace_revoked", handleWorkspaceRevoked);
+      socket.off("private_channels_revoked", handlePrivateChannelsRevoked);
     };
   }, [socket]);
 };

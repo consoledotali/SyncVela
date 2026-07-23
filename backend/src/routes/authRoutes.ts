@@ -5,6 +5,7 @@ import {
   refreshAccessToken,
   logoutUser,
   verifyOTPHandler,
+  resendOtpHandler,
   googleLoginHandler,
   forgotPasswordHandler,
   resetPasswordHandler,
@@ -33,6 +34,7 @@ const loginLimiter = rateLimit({
 router.post("/register", registerUser);
 router.post("/login", loginLimiter, loginUser); // Login par limit laga di
 router.post("/verify-otp", otpLimiter, verifyOTPHandler);
+router.post("/resend-otp", otpLimiter, resendOtpHandler);
 
 // Google OAuth Route
 router.post("/google", googleLoginHandler);

@@ -3,6 +3,7 @@
 import React, { createContext, useContext, useEffect, useState } from "react";
 import { io, Socket } from "socket.io-client";
 import { useRouter } from "next/navigation";
+import axios from "axios";
 import { useAuthStore } from "@/src/store/authStore";
 import { useChatStore } from "@/src/store/chat";
 
@@ -84,15 +85,16 @@ export const SocketProvider = ({ children }: { children: React.ReactNode }) => {
         console.warn("⚠️ Access token expired. Attempting silent refresh...");
 
         try {
-          const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000"}/api/auth/refresh`, {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            credentials: "include",
-          });
+          const res = await axios.post(
+            `${process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000"}/api/auth/refresh`,
+            {},
+            { withCredentials: true, validateStatus: () => true },
+          );
 
-          if (!res.ok) throw new Error("Refresh API rejected the request");
+          if (res.status < 200 || res.status >= 300)
+            throw new Error("Refresh API rejected the request");
 
-          const data = await res.json();
+          const data = res.data;
           console.log("✅ Token silently refreshed! Injecting hot-swap...");
 
           socketInstance.auth = { token: data.accessToken };

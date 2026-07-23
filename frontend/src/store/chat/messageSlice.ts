@@ -104,13 +104,16 @@ export const createMessageSlice: StateCreator<
     })),
 
   // 🚀 THE SMART COLLAPSE ENGINE (Ghost Window + Zero Counter Fix)
-  deleteMessage: (messageId: string) =>
+  deleteMessage: (messageId: string, parentMessageId?: string | null) =>
     set((state) => {
-      // 1. Pehle marnay wale message ko dhoondo taake uska parentMessageId pata chal sake
+      // 1. Pehle marnay wale message ko dhoondo taake uska parentMessageId pata chal sake.
+      //    Server ab payload mein parentMessageId bhejta hai — is user ne thread open
+      //    kiya ho ya na kiya ho, count phir bhi sahi decrement hoga. Local lookup sirf
+      //    fallback ke liye hai (purana behaviour).
       const msgToDelete =
         state.threadMessages.find((m) => m.id === messageId) ||
         state.messages.find((m) => m.id === messageId);
-      const parentId = msgToDelete?.parentMessageId;
+      const parentId = parentMessageId ?? msgToDelete?.parentMessageId;
 
       // 🚀 THE FIX: Kya delete honay wala message wahi Root Parent hai jis par Drawer khula hua hai?
       const isDeletingActiveThread = state.activeThreadParent?.id === messageId;

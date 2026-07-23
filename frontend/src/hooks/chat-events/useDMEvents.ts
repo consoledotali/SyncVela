@@ -1,6 +1,7 @@
 import { useEffect } from "react";
 import { useChatStore, Message } from "@/src/store/chat";
 import { useAuthStore } from "@/src/store/authStore";
+import { authFetch } from "@/src/lib/authFetch";
 
 export const useDMEvents = (socket: any) => {
   useEffect(() => {
@@ -21,10 +22,8 @@ export const useDMEvents = (socket: any) => {
       }
 
       try {
-        const token = authState().token;
-        const response = await fetch(
+        const response = await authFetch(
           `${process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000"}/api/messages/dm/${roomId}`,
-          { headers: { Authorization: `Bearer ${token}` } },
         );
 
         if (response.ok) {
@@ -180,9 +179,10 @@ export const useDMEvents = (socket: any) => {
       roomId,
       isChannel,
       senderId,
+      parentMessageId,
     }: any) => {
       const state = chatState();
-      state.deleteMessage(messageId);
+      state.deleteMessage(messageId, parentMessageId);
       if (isChannel && roomId && state.activeChannelId !== roomId) {
         state.decrementChannelUnread(roomId);
       } else if (!isChannel && senderId && state.activeRoomId !== roomId) {

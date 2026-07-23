@@ -45,6 +45,8 @@ export const generatePresignedUrl = async (
       // Stored for reference; actual access always goes through signed GET URLs.
       finalFileUrl: `https://${process.env.DO_SPACES_BUCKET}.${process.env.DO_SPACES_ENDPOINT}/${uniqueFileKey}`,
       fileKey: uniqueFileKey,
+      // Tells the client whether it must send the x-amz-acl header on the PUT.
+      visibility: isPublic ? "public" : "private",
     });
   } catch (error) {
     console.error("❌ Presigned URL Generation Failed:", error);

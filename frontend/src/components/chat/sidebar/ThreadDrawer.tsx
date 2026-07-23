@@ -7,6 +7,7 @@ import { useSocket } from "@/src/providers/SocketProvider";
 import { X, Loader2, Send } from "lucide-react";
 import MessageBubble from "../MessageBubble";
 import { v4 as uuidv4 } from "uuid";
+import { authFetch } from "@/src/lib/authFetch";
 
 export default function ThreadDrawer() {
   const { token, user } = useAuthStore();
@@ -33,9 +34,8 @@ export default function ThreadDrawer() {
     const fetchReplies = async () => {
       setIsFetchingThread(true);
       try {
-        const response = await fetch(
+        const response = await authFetch(
           `${process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000"}/api/messages/thread/${activeThreadParent.id}`,
-          { headers: { Authorization: `Bearer ${token}` } },
         );
         if (response.ok) {
           const data = await response.json();
@@ -50,6 +50,23 @@ export default function ThreadDrawer() {
             parentMessageId: msg.parentMessageId || activeThreadParent.id,
           }));
           setThreadMessages(normalizedReplies);
+
+          // 🚀 BLUE-TICK FIX: Thread khulte hi peer ki replies ko "read" mark karo.
+          // Yeh server par lastReadAt update kar ke sender ko `messagesRead` emit
+          // karvata hai, warna DM thread mein blue tick kabhi show nahi hota.
+          const s = useChatStore.getState();
+          if (s.activeRoomId && s.selectedUser && socket) {
+            socket.emit("markAsRead", {
+              roomId: s.activeRoomId,
+              targetUserId: s.selectedUser.id,
+            });
+          }
+        } else {
+          console.error(
+            "❌ Thread fetch failed:",
+            response.status,
+            await response.text().catch(() => ""),
+          );
         }
       } catch (error) {
         console.error("❌ Thread payload expansion critical failure:", error);

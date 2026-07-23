@@ -4,7 +4,13 @@ import { PrismaClient } from "@prisma/client";
 // taake Next.js hot-reload par naye connections na khole
 const prismaClientSingleton = () => {
   return new PrismaClient({
-    log: process.env.NODE_ENV === "development" ? ["query", "error", "warn"] : ["error"],
+    // Only surface errors and warnings. Query-level logging is far too noisy
+    // (every SQL statement prints) and can leak data — enable it ad hoc via
+    // PRISMA_LOG_QUERIES=true when you actually need to debug a query.
+    log:
+      process.env.PRISMA_LOG_QUERIES === "true"
+        ? ["query", "error", "warn"]
+        : ["error", "warn"],
   });
 };
 

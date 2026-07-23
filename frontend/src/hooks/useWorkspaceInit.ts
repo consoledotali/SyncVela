@@ -2,6 +2,7 @@ import { useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { useChatStore } from "@/src/store/chat";
 import { useAuthStore } from "@/src/store/authStore";
+import { authFetch } from "@/src/lib/authFetch";
 
 export const useWorkspaceInit = () => {
   const { token, isAuthenticated } = useAuthStore();
@@ -17,12 +18,7 @@ export const useWorkspaceInit = () => {
 
     const fetchWorkspaces = async () => {
       try {
-        const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000"}/api/workspaces`, {
-          headers: {
-            Authorization: `Bearer ${token}`,
-            "Content-Type": "application/json",
-          },
-        });
+        const response = await authFetch(`${process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000"}/api/workspaces`);
 
         if (response.ok) {
           const data = await response.json();

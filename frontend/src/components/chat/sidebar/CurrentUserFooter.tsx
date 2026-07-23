@@ -2,6 +2,7 @@
 
 import React, { useState } from "react";
 import { useRouter } from "next/navigation";
+import axios from "axios";
 import { useAuthStore } from "@/src/store/authStore";
 import { useChatStore } from "@/src/store/chat";
 import { useSocket } from "@/src/providers/SocketProvider";
@@ -30,10 +31,11 @@ export default function CurrentUserFooter() {
 
   const handleStrictLogout = async () => {
     try {
-      await fetch(`${process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000"}/api/auth/logout`, {
-        method: "POST",
-        credentials: "include",
-      });
+      await axios.post(
+        `${process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000"}/api/auth/logout`,
+        {},
+        { withCredentials: true, validateStatus: () => true },
+      );
       resetChat();
       logout();
       router.push("/auth/login");

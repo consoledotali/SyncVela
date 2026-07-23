@@ -15,6 +15,7 @@ import {
 } from "lucide-react";
 import WorkspaceInviteModal from "./WorkspaceInviteModal";
 import ManageMembersModal from "./ManageMembersModal"; // 🚀 NEW MODAL IMPORT
+import { authFetch } from "@/src/lib/authFetch";
 
 interface WorkspaceDropdownProps {
   onOpenCreateModal: () => void;
@@ -54,11 +55,10 @@ export default function WorkspaceDropdown({
 
     setIsDeleting(true);
     try {
-      const response = await fetch(
+      const response = await authFetch(
         `${process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000"}/api/workspaces/${activeWorkspaceId}`,
         {
           method: "DELETE",
-          headers: { Authorization: `Bearer ${token}` },
         },
       );
 

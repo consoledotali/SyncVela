@@ -11,11 +11,15 @@ interface AttachmentProps {
     size?: number;
   };
   isMulti?: boolean;
+  // Called when the attachment is clicked, so the parent can open a single
+  // shared Lightbox positioned at this attachment within the whole message.
+  onOpen?: () => void;
 }
 
 export const AttachmentRenderer = ({
   attachment,
   isMulti = false,
+  onOpen,
 }: AttachmentProps) => {
   if (!attachment || !attachment.url) return null;
 
@@ -27,9 +31,15 @@ export const AttachmentRenderer = ({
     ? (attachment.size / 1024 / 1024).toFixed(2)
     : "0.00";
 
+  const isPdf =
+    fileType === "document" &&
+    (attachment.mimeType?.includes("pdf") ||
+      attachment.url.split("?")[0].toLowerCase().endsWith(".pdf"));
+
   if (fileType === "image") {
     return (
       <div
+        onClick={onOpen}
         className={`overflow-hidden rounded-lg border border-border bg-muted/20 hover:opacity-95 transition-opacity cursor-pointer shadow-sm w-full ${
           isMulti ? "aspect-square" : "max-w-[360px]"
         }`}
@@ -50,14 +60,14 @@ export const AttachmentRenderer = ({
   if (fileType === "video") {
     return (
       <div
-        className={`overflow-hidden rounded-lg border border-border bg-black shadow-sm w-full ${
+        onClick={onOpen}
+        className={`overflow-hidden rounded-lg border border-border bg-black shadow-sm w-full cursor-pointer ${
           isMulti ? "aspect-square" : "max-w-[360px]"
         }`}
       >
         <video
           src={attachment.url}
-          controls
-          className={`w-full h-full ${
+          className={`w-full h-full pointer-events-none ${
             isMulti ? "object-cover" : "object-contain max-h-[360px]"
           }`}
           preload="metadata"
@@ -77,6 +87,28 @@ export const AttachmentRenderer = ({
           preload="metadata"
         />
       </div>
+    );
+  }
+
+  // PDFs preview in the shared lightbox; other doc types open/download directly.
+  if (isPdf) {
+    return (
+      <button
+        onClick={onOpen}
+        className="flex items-center gap-3 p-3 rounded-xl border border-border bg-card hover:bg-muted/60 max-w-sm w-full transition-all duration-150 group/file mt-1 text-left"
+      >
+        <div className="p-2.5 rounded-lg bg-primary/10 text-primary group-hover/file:bg-primary/20 transition-colors">
+          <FileIcon className="h-5 w-5" />
+        </div>
+        <div className="flex flex-col flex-1 min-w-0">
+          <span className="text-[13px] font-semibold truncate text-foreground leading-tight">
+            {attachment.fileName || "Document"}
+          </span>
+          <span className="text-[10px] uppercase tracking-wider text-muted-foreground mt-0.5">
+            {fileType} • {sizeMB} MB
+          </span>
+        </div>
+      </button>
     );
   }
 

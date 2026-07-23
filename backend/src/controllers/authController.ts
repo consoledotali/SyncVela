@@ -30,6 +30,25 @@ export const registerUser = async (
   }
 };
 
+export const resendOtpHandler = async (
+  req: Request,
+  res: Response,
+): Promise<void> => {
+  try {
+    const { email } = req.body;
+    if (!email) {
+      res.status(400).json({ error: "Email is required." });
+      return;
+    }
+    const response = await authService.resendOtp(email);
+    res.status(200).json(response);
+  } catch (error: unknown) {
+    const errorMessage =
+      error instanceof Error ? error.message : "Failed to resend code.";
+    res.status(400).json({ error: errorMessage });
+  }
+};
+
 export const verifyOTPHandler = async (
   req: Request,
   res: Response,

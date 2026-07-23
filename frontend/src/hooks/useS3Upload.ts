@@ -1,13 +1,14 @@
 import { useState } from "react";
-import { useAuthStore } from "@/src/store/authStore";
+import axios from "axios";
+import { authFetch } from "@/src/lib/authFetch";
 
 export const useS3Upload = () => {
   const [isUploading, setIsUploading] = useState(false);
 
-  // 🚀 THE FIX: Return full object for Relational Database
   const uploadFile = async (
     file: File,
     visibility: "public" | "private" = "private",
+    onProgress?: (percent: number) => void,
   ): Promise<{
     url: string;
     fileKey: string;
@@ -17,68 +18,41 @@ export const useS3Upload = () => {
   } | null> => {
     setIsUploading(true);
     try {
-      let currentToken = useAuthStore.getState().token;
-
-      const fetchPresignUrl = async (tokenToUse: string | null) => {
-        return fetch(`${process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000"}/api/upload/presign`, {
+      const presignRes = await authFetch(
+        `${process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000"}/api/upload/presign`,
+        {
           method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${tokenToUse}`,
-          },
+          headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             filename: file.name,
             contentType: file.type || "application/octet-stream",
             fileSize: file.size,
             visibility,
           }),
-        });
+        },
+      );
+
+      if (!presignRes.ok) throw new Error("Failed to get upload ticket");
+
+      const { uploadUrl, finalFileUrl, fileKey, visibility: signedVisibility } =
+        await presignRes.json();
+
+      const putHeaders: Record<string, string> = {
+        "Content-Type": file.type || "application/octet-stream",
       };
-
-      let presignRes = await fetchPresignUrl(currentToken);
-
-      if (presignRes.status === 401 || presignRes.status === 403) {
-        const refreshRes = await fetch(
-          `${process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000"}/api/auth/refresh`,
-          {
-            method: "POST",
-            credentials: "include",
-          },
-        );
-
-        if (!refreshRes.ok) {
-          useAuthStore.getState().logout();
-          window.location.href = "/auth/login";
-          throw new Error("Session completely expired. Please log in again.");
-        }
-
-        const authData = await refreshRes.json();
-        const newToken = authData.accessToken || authData.token;
-
-        useAuthStore.setState({ token: newToken });
-        currentToken = newToken;
-
-        presignRes = await fetchPresignUrl(currentToken);
-        if (!presignRes.ok) throw new Error("Retry failed.");
-      } else if (!presignRes.ok) {
-        throw new Error("Failed to get upload ticket");
+      if ((signedVisibility ?? visibility) === "public") {
+        putHeaders["x-amz-acl"] = "public-read";
       }
 
-      const { uploadUrl, finalFileUrl, fileKey } = await presignRes.json();
-
-      // Content-Type must match what was signed. No ACL header — the object is
-      // private and served later via short-lived signed GET URLs.
-      const uploadRes = await fetch(uploadUrl, {
-        method: "PUT",
-        headers: {
-          "Content-Type": file.type || "application/octet-stream",
+      await axios.put(uploadUrl, file, {
+        headers: putHeaders,
+        onUploadProgress: (e) => {
+          if (onProgress && e.total) {
+            onProgress(Math.round((e.loaded / e.total) * 100));
+          }
         },
-        body: file,
       });
 
-      if (!uploadRes.ok) throw new Error("Failed to upload to cloud");
-
-      // Return metadata. fileKey drives signed-URL generation on the server.
       return {
         url: finalFileUrl,
         fileKey,

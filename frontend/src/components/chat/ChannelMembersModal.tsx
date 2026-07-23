@@ -8,6 +8,7 @@ import {
   AvatarImage,
 } from "@/src/components/ui/avatar";
 import { useAuthStore } from "@/src/store/authStore";
+import { authFetch } from "@/src/lib/authFetch";
 
 interface ChannelMembersModalProps {
   isOpen: boolean;
@@ -22,8 +23,16 @@ interface Member {
   name: string;
   avatarUrl: string | null;
   email: string;
-  role?: "OWNER" | "ADMIN" | "MEMBER"; // Backend lazmi bheje yeh
+  role?: "OWNER" | "ADMIN" | "MEMBER" | "GUEST"; // Backend lazmi bheje yeh
 }
+
+// Distinct visual treatment per role for the members list badge.
+const ROLE_BADGE_STYLES: Record<string, string> = {
+  OWNER: "bg-primary/10 text-primary",
+  ADMIN: "bg-indigo-500/10 text-indigo-600 dark:text-indigo-400",
+  MEMBER: "bg-muted text-muted-foreground",
+  GUEST: "bg-amber-500/10 text-amber-600 dark:text-amber-400",
+};
 
 export default function ChannelMembersModal({
   isOpen,
@@ -48,11 +57,8 @@ export default function ChannelMembersModal({
       setIsLoading(true);
       setError("");
       try {
-        const res = await fetch(
+        const res = await authFetch(
           `${process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000"}/api/channels/${channelId}/members`,
-          {
-            headers: { Authorization: `Bearer ${token}` },
-          },
         );
 
         const data = await res.json();
@@ -151,7 +157,9 @@ export default function ChannelMembersModal({
             <div className="flex flex-col gap-1">
               {filteredAndSortedMembers.map((member) => {
                 const isMe = user?.id === member.id;
-                const isOwner = member.role === "OWNER";
+                const role = member.role || "MEMBER";
+                const badgeStyle =
+                  ROLE_BADGE_STYLES[role] || ROLE_BADGE_STYLES.MEMBER;
 
                 return (
                   <div
@@ -191,11 +199,11 @@ export default function ChannelMembersModal({
                     </div>
 
                     {/* 🟢 Role Badge Indicator */}
-                    {isOwner && (
-                      <span className="text-[10px] font-bold tracking-wider uppercase bg-primary/10 text-primary px-2 py-1 rounded-sm">
-                        Owner
-                      </span>
-                    )}
+                    <span
+                      className={`text-[10px] font-bold tracking-wider uppercase px-2 py-1 rounded-sm ${badgeStyle}`}
+                    >
+                      {role}
+                    </span>
                   </div>
                 );
               })}

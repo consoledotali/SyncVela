@@ -42,6 +42,20 @@ export const createChannel = async (
         data: { channelId: newChannel.id, userId },
       });
 
+      // PRIVATE channels: always add the workspace OWNER so they have full visibility,
+      // regardless of whether they were explicitly invited.
+      if (type === "PRIVATE") {
+        const owner = await tx.workspaceMember.findFirst({
+          where: { workspaceId, role: "OWNER" },
+          select: { userId: true },
+        });
+        if (owner && owner.userId !== userId) {
+          await tx.channelMember.create({
+            data: { channelId: newChannel.id, userId: owner.userId },
+          });
+        }
+      }
+
       return newChannel;
     });
 
@@ -245,6 +259,30 @@ export const getChannelMembers = async (
         });
         return;
       }
+    }
+
+    // PUBLIC channels belong to the whole workspace, so their member list is
+    // every workspace member — not just the ChannelMember read-state rows (only
+    // the creator gets one of those at creation). This also makes newly-joined
+    // workspace members appear automatically on the next fetch. PRIVATE channels
+    // stay restricted to their explicit ChannelMember rows.
+    if (channel.type === "PUBLIC") {
+      const workspaceMembers = await prisma.workspaceMember.findMany({
+        where: { workspaceId: channel.workspaceId },
+        include: {
+          user: {
+            select: { id: true, name: true, avatarUrl: true, email: true },
+          },
+        },
+      });
+
+      const formattedMembers = workspaceMembers.map((wm) => ({
+        ...wm.user,
+        role: wm.role,
+      }));
+
+      res.status(200).json(formattedMembers);
+      return;
     }
 
     const channelMembers = await prisma.channelMember.findMany({
