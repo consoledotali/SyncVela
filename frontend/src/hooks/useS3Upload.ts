@@ -1,13 +1,14 @@
 import { useState } from "react";
+import axios from "axios";
 import { authFetch } from "@/src/lib/authFetch";
 
 export const useS3Upload = () => {
   const [isUploading, setIsUploading] = useState(false);
 
-  // 🚀 THE FIX: Return full object for Relational Database
   const uploadFile = async (
     file: File,
     visibility: "public" | "private" = "private",
+    onProgress?: (percent: number) => void,
   ): Promise<{
     url: string;
     fileKey: string;
@@ -17,15 +18,11 @@ export const useS3Upload = () => {
   } | null> => {
     setIsUploading(true);
     try {
-      // authFetch attaches the token and handles the 401 → refresh → retry
-      // dance internally, so no manual refresh block is needed here.
       const presignRes = await authFetch(
         `${process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000"}/api/upload/presign`,
         {
           method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-          },
+          headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             filename: file.name,
             contentType: file.type || "application/octet-stream",
@@ -40,10 +37,6 @@ export const useS3Upload = () => {
       const { uploadUrl, finalFileUrl, fileKey, visibility: signedVisibility } =
         await presignRes.json();
 
-      // Build PUT headers. Content-Type must match what was signed. For public
-      // objects the server signed an x-amz-acl header, so we MUST send that exact
-      // header back or DigitalOcean Spaces stores the object as private → 403 on
-      // read. Private objects need no ACL header (private is the Space default).
       const putHeaders: Record<string, string> = {
         "Content-Type": file.type || "application/octet-stream",
       };
@@ -51,15 +44,15 @@ export const useS3Upload = () => {
         putHeaders["x-amz-acl"] = "public-read";
       }
 
-      const uploadRes = await fetch(uploadUrl, {
-        method: "PUT",
+      await axios.put(uploadUrl, file, {
         headers: putHeaders,
-        body: file,
+        onUploadProgress: (e) => {
+          if (onProgress && e.total) {
+            onProgress(Math.round((e.loaded / e.total) * 100));
+          }
+        },
       });
 
-      if (!uploadRes.ok) throw new Error("Failed to upload to cloud");
-
-      // Return metadata. fileKey drives signed-URL generation on the server.
       return {
         url: finalFileUrl,
         fileKey,
