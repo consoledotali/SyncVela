@@ -179,9 +179,10 @@ export const useDMEvents = (socket: any) => {
       roomId,
       isChannel,
       senderId,
+      parentMessageId,
     }: any) => {
       const state = chatState();
-      state.deleteMessage(messageId);
+      state.deleteMessage(messageId, parentMessageId);
       if (isChannel && roomId && state.activeChannelId !== roomId) {
         state.decrementChannelUnread(roomId);
       } else if (!isChannel && senderId && state.activeRoomId !== roomId) {

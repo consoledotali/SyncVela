@@ -138,7 +138,7 @@ export interface MessageSlice {
     tempId?: string,
   ) => void;
   updateRealMessageId: (tempId: string, realId: string) => void;
-  deleteMessage: (messageId: string) => void;
+  deleteMessage: (messageId: string, parentMessageId?: string | null) => void;
   editMessage: (messageId: string, newText: string) => void;
 }
 

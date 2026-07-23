@@ -148,10 +148,10 @@ export const useChannelEvents = (socket: any) => {
     };
 
     const handleMessageDeleted = (payload: any) => {
-      const { messageId, roomId, isChannel } = payload;
+      const { messageId, roomId, isChannel, parentMessageId } = payload;
       const state = chatState();
 
-      state.deleteMessage(messageId);
+      state.deleteMessage(messageId, parentMessageId);
 
       if (isChannel && roomId && state.activeChannelId !== roomId) {
         state.decrementChannelUnread(roomId);

@@ -59,6 +59,7 @@ export const registerMessageActionHandlers = (
         roomId,
         isChannel,
         senderId: existingMessage.senderId, // 🛡️ STRICT FIX: Notify using original sender's ID so unread badges sync correctly
+        parentMessageId: existingMessage.parentMessageId, // 🚀 THREAD COUNT FIX: Client uses this to decrement parent's reply badge
       };
 
       if (isChannel) {

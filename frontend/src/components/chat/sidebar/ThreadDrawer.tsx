@@ -50,6 +50,17 @@ export default function ThreadDrawer() {
             parentMessageId: msg.parentMessageId || activeThreadParent.id,
           }));
           setThreadMessages(normalizedReplies);
+
+          // 🚀 BLUE-TICK FIX: Thread khulte hi peer ki replies ko "read" mark karo.
+          // Yeh server par lastReadAt update kar ke sender ko `messagesRead` emit
+          // karvata hai, warna DM thread mein blue tick kabhi show nahi hota.
+          const s = useChatStore.getState();
+          if (s.activeRoomId && s.selectedUser && socket) {
+            socket.emit("markAsRead", {
+              roomId: s.activeRoomId,
+              targetUserId: s.selectedUser.id,
+            });
+          }
         } else {
           console.error(
             "❌ Thread fetch failed:",
