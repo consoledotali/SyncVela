@@ -113,6 +113,28 @@ export const register = async (
   };
 };
 
+export const resendOtp = async (email: string) => {
+  const user = await prisma.user.findUnique({ where: { email } });
+
+  // Do not leak whether the account exists.
+  if (!user) throw new Error("If this email exists, a new code has been sent.");
+  if (user.isEmailVerified) throw new Error("Email is already verified.");
+
+  const otp = crypto.randomInt(100000, 999999).toString();
+  const verificationExpiresAt = new Date(Date.now() + 15 * 60 * 1000); // 15 mins
+
+  await prisma.user.update({
+    where: { id: user.id },
+    data: { verificationToken: otp, verificationExpiresAt },
+  });
+
+  sendOtpEmail(user.email, otp).catch((e) =>
+    console.error("❌ Resend OTP email failed to send:", e),
+  );
+
+  return { message: "A new verification code has been sent to your email." };
+};
+
 export const verifyOTP = async (
   email: string,
   otp: string,
