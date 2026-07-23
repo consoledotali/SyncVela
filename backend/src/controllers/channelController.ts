@@ -42,6 +42,20 @@ export const createChannel = async (
         data: { channelId: newChannel.id, userId },
       });
 
+      // PRIVATE channels: always add the workspace OWNER so they have full visibility,
+      // regardless of whether they were explicitly invited.
+      if (type === "PRIVATE") {
+        const owner = await tx.workspaceMember.findFirst({
+          where: { workspaceId, role: "OWNER" },
+          select: { userId: true },
+        });
+        if (owner && owner.userId !== userId) {
+          await tx.channelMember.create({
+            data: { channelId: newChannel.id, userId: owner.userId },
+          });
+        }
+      }
+
       return newChannel;
     });
 

@@ -292,9 +292,26 @@ export const updateWorkspaceMemberRole = async (
 
     const updatedMember = await prisma.workspaceMember.update({
       where: { userId_workspaceId: { userId: targetUserId, workspaceId } },
-      data: { role: newRole as any }, // Cast to any or your Prisma Enum type
+      data: { role: newRole as any },
       include: { user: { select: { id: true, name: true } } },
     });
+
+    // When demoted to MEMBER/GUEST, revoke access to all private channels in
+    // this workspace — they should only be in channels they were explicitly
+    // invited to as a regular member, not ones they created/joined as ADMIN.
+    let revokedChannelIds: string[] = [];
+    if (newRole === "MEMBER" || newRole === "GUEST") {
+      const privateChannels = await prisma.channel.findMany({
+        where: { workspaceId, type: "PRIVATE" },
+        select: { id: true },
+      });
+      revokedChannelIds = privateChannels.map((c) => c.id);
+      if (revokedChannelIds.length > 0) {
+        await prisma.channelMember.deleteMany({
+          where: { userId: targetUserId, channelId: { in: revokedChannelIds } },
+        });
+      }
+    }
 
     const io = req.app.get("socketio");
     if (io) {
@@ -303,6 +320,9 @@ export const updateWorkspaceMemberRole = async (
         userId: targetUserId,
         newRole,
       });
+      if (revokedChannelIds.length > 0) {
+        io.to(targetUserId).emit("private_channels_revoked", { channelIds: revokedChannelIds });
+      }
     }
 
     res.status(200).json({
