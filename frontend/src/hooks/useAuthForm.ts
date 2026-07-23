@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
+import axios from "axios";
 import { useAuthStore } from "@/src/store/authStore";
 
 export const useAuthForm = (initialMode: boolean = true) => {
@@ -41,16 +42,14 @@ export const useAuthForm = (initialMode: boolean = true) => {
     try {
       const apiUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000";
 
-      const response = await fetch(`${apiUrl}${endpoint}`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        credentials: "include",
-        body: JSON.stringify(payload),
+      const response = await axios.post(`${apiUrl}${endpoint}`, payload, {
+        withCredentials: true,
+        validateStatus: () => true,
       });
 
-      const data = await response.json();
+      const data = response.data;
 
-      if (!response.ok) {
+      if (response.status < 200 || response.status >= 300) {
         if (data.error === "EMAIL_NOT_VERIFIED") {
           router.push(
             `/verify-otp?email=${encodeURIComponent(formData.email)}`,

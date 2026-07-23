@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect, useRef, Suspense } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
+import axios from "axios";
 import { useAuthStore } from "@/src/store/authStore";
 import { Button } from "@/src/components/ui/button";
 import { Shield, Loader2, AlertCircle, ArrowRight } from "lucide-react";
@@ -88,15 +89,14 @@ function VerifyOTPContent() {
     setError("");
 
     try {
-      const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000"}/api/auth/resend-otp`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email }),
-      });
+      const res = await axios.post(
+        `${process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000"}/api/auth/resend-otp`,
+        { email },
+        { validateStatus: () => true },
+      );
 
-      if (!res.ok) {
-        const data = await res.json();
-        throw new Error(data.error || "Failed to resend code.");
+      if (res.status < 200 || res.status >= 300) {
+        throw new Error(res.data?.error || "Failed to resend code.");
       }
 
       setTimeLeft(60); // Timer Wapas 60s par
@@ -122,15 +122,15 @@ function VerifyOTPContent() {
     setError("");
 
     try {
-      const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000"}/api/auth/verify-otp`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        credentials: "include",
-        body: JSON.stringify({ email, otp: otpString }),
-      });
+      const res = await axios.post(
+        `${process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000"}/api/auth/verify-otp`,
+        { email, otp: otpString },
+        { withCredentials: true, validateStatus: () => true },
+      );
 
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || "Invalid verification code.");
+      const data = res.data;
+      if (res.status < 200 || res.status >= 300)
+        throw new Error(data?.error || "Invalid verification code.");
 
       const { login } = useAuthStore.getState();
       login(data.user, data.accessToken);

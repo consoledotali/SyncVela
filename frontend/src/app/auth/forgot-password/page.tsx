@@ -2,6 +2,7 @@
 
 import React, { useState } from "react";
 import { useRouter } from "next/navigation";
+import axios from "axios";
 import { Button } from "@/src/components/ui/button";
 import { Input } from "@/src/components/ui/input";
 import { Label } from "@/src/components/ui/label";
@@ -38,18 +39,16 @@ export default function ForgotPasswordPage() {
     setSuccessMsg("");
 
     try {
-      const res = await fetch(
+      const res = await axios.post(
         `${process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000"}/api/auth/forgot-password`,
-        {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ email }),
-        },
+        { email },
+        { validateStatus: () => true },
       );
 
-      const data = await res.json();
+      const data = res.data;
 
-      if (!res.ok) throw new Error(data.error || "Failed to request reset.");
+      if (res.status < 200 || res.status >= 300)
+        throw new Error(data?.error || "Failed to request reset.");
 
       // Success, move to step 2
       setSuccessMsg("If this account exists, a 6-digit OTP has been sent.");
@@ -73,15 +72,16 @@ export default function ForgotPasswordPage() {
     setError("");
 
     try {
-      const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000"}/api/auth/reset-password`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email, otp, newPassword }),
-      });
+      const res = await axios.post(
+        `${process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000"}/api/auth/reset-password`,
+        { email, otp, newPassword },
+        { validateStatus: () => true },
+      );
 
-      const data = await res.json();
+      const data = res.data;
 
-      if (!res.ok) throw new Error(data.error || "Failed to reset password.");
+      if (res.status < 200 || res.status >= 300)
+        throw new Error(data?.error || "Failed to reset password.");
 
       // Success, redirect to login
       alert("Password reset successfully! You can now log in.");
