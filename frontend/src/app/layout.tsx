@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { Inter } from "next/font/google";
 import "./globals.css";
 import { SocketProvider } from "@/src/providers/SocketProvider";
+import GlobalUploadManager from "@/src/components/chat/GlobalUploadManager";
 
 // 🛡️ ENTERPRISE FONT: Inter
 const inter = Inter({
@@ -25,7 +26,10 @@ export default function RootLayout({
       <body
         className={`${inter.variable} font-sans antialiased bg-background text-foreground`}
       >
-        <SocketProvider>{children}</SocketProvider>
+        <SocketProvider>
+          {children}
+          <GlobalUploadManager />
+        </SocketProvider>
       </body>
     </html>
   );
