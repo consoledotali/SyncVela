@@ -1,12 +1,24 @@
-import { PrismaClient } from "@prisma/client";
+import { PrismaPg } from "@prisma/adapter-pg";
+import { PrismaClient } from "../generated/prisma/client";
 
-// Global object mein prisma instance save karne ka pattern
-// taake Next.js hot-reload par naye connections na khole
+const connectionString = process.env.DATABASE_URL;
+
+if (!connectionString) {
+  throw new Error("DATABASE_URL is required before initializing Prisma");
+}
+
+// Prisma 7 uses the PostgreSQL driver adapter. Keep one client per process so
+// development reloads and production workers do not create unnecessary pools.
 const prismaClientSingleton = () => {
+  const adapter = new PrismaPg({
+    connectionString,
+    max: Number(process.env.DATABASE_POOL_MAX ?? 20),
+    connectionTimeoutMillis: Number(process.env.DATABASE_POOL_CONNECTION_TIMEOUT_MS ?? 10_000),
+    idleTimeoutMillis: Number(process.env.DATABASE_POOL_IDLE_TIMEOUT_MS ?? 30_000),
+  });
+
   return new PrismaClient({
-    // Only surface errors and warnings. Query-level logging is far too noisy
-    // (every SQL statement prints) and can leak data — enable it ad hoc via
-    // PRISMA_LOG_QUERIES=true when you actually need to debug a query.
+    adapter,
     log:
       process.env.PRISMA_LOG_QUERIES === "true"
         ? ["query", "error", "warn"]
@@ -18,12 +30,10 @@ declare const globalThis: {
   prismaGlobal: ReturnType<typeof prismaClientSingleton>;
 } & typeof global;
 
-// Agar purana connection maujood hai toh wo use karo, warna naya banao
 const prisma = globalThis.prismaGlobal ?? prismaClientSingleton();
 
 export default prisma;
 
-// Production mein global caching ki zaroorat nahi hoti, sirf development mein hoti hai
 if (process.env.NODE_ENV !== "production") {
   globalThis.prismaGlobal = prisma;
 }

@@ -4,7 +4,7 @@
   "description": "",
   "main": "index.js",
   "scripts": {
-    "dev": "ts-node-dev src/server.ts",
+    "dev": "ts-node-dev --respawn --transpile-only -r dotenv/config src/server.ts",
     "start": "node dist/server.js",
     "build": "tsc"
   },
@@ -15,7 +15,9 @@
   "dependencies": {
     "@aws-sdk/client-s3": "^3.1042.0",
     "@aws-sdk/s3-request-presigner": "^3.1042.0",
-    "@prisma/client": "^6.19.2",
+    "@prisma/adapter-pg": "^7.9.1",
+    "@prisma/client": "^7.9.1",
+    "@socket.io/redis-adapter": "^8.3.0",
     "bcryptjs": "^3.0.3",
     "cookie-parser": "^1.4.7",
     "cors": "^2.8.6",
@@ -24,10 +26,15 @@
     "express": "^5.2.1",
     "express-rate-limit": "^8.5.2",
     "google-auth-library": "^10.6.2",
+    "helmet": "^8.3.0",
     "jsonwebtoken": "^9.0.3",
+    "pg": "^8.23.0",
+    "prisma": "^7.9.1",
+    "rate-limit-redis": "^6.0.1",
     "redis": "^5.11.0",
     "resend": "^6.12.3",
-    "socket.io": "^4.8.3"
+    "socket.io": "^4.8.3",
+    "zod": "^4.4.3"
   },
   "devDependencies": {
     "@types/bcryptjs": "^2.4.6",
@@ -36,8 +43,11 @@
     "@types/express": "^5.0.6",
     "@types/jsonwebtoken": "^9.0.10",
     "@types/node": "^25.3.3",
-    "prisma": "^6.19.2",
+    "@types/pg": "^8.15.6",
     "ts-node-dev": "^2.0.0",
     "typescript": "^5.9.3"
+  },
+  "overrides": {
+    "deepmerge-ts": "8.0.1"
   }
 }
