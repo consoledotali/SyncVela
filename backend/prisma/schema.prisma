@@ -1,10 +1,10 @@
 generator client {
-  provider = "prisma-client-js"
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
 }
 
 datasource db {
   provider = "postgresql"
-  url      = env("DATABASE_URL")
 }
 
 // ------------------------------------------------------
@@ -51,12 +51,17 @@ model User {
   resetTokenExpiresAt   DateTime?
   createdAt             DateTime     @default(now())
   updatedAt             DateTime     @updatedAt
+  isDeleted             Boolean      @default(false)
+  deletedAt             DateTime?
 
   // RELATIONS
-  conversations Participant[]
-  messages      Message[]
-  workspaces    WorkspaceMember[]
-  channels      ChannelMember[]
+  conversations    Participant[]
+  messages         Message[]
+  workspaces       WorkspaceMember[]
+  channels         ChannelMember[]
+  ownedChannels    Channel[]        @relation("ChannelOwner")
+  messageReactions MessageReaction[]
+  notifications    Notification[]
 
   @@map("users")
 }
@@ -72,8 +77,9 @@ model Workspace {
   createdAt  DateTime @default(now())
   updatedAt  DateTime @updatedAt
 
-  members  WorkspaceMember[]
-  channels Channel[]
+  members       WorkspaceMember[]
+  channels      Channel[]
+  conversations Conversation[]
 
   @@map("workspaces")
 }
@@ -109,10 +115,14 @@ model Channel {
   workspaceId String
   workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
 
+  ownerId String
+  owner   User   @relation("ChannelOwner", fields: [ownerId], references: [id], onDelete: Restrict)
+
   members  ChannelMember[]
   messages Message[]
 
   @@index([workspaceId])
+  @@index([ownerId])
   @@map("channels")
 }
 
@@ -122,6 +132,7 @@ model ChannelMember {
   updatedAt DateTime @updatedAt
 
   lastReadAt DateTime? @default(now())
+  isHidden   Boolean   @default(false)
 
   userId String
   user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
@@ -131,6 +142,7 @@ model ChannelMember {
 
   @@unique([userId, channelId])
   @@index([channelId])
+  @@index([channelId, isHidden])
   @@index([userId])
   @@map("channel_members")
 }
@@ -146,9 +158,13 @@ model Conversation {
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
 
+  workspaceId String?
+  workspace   Workspace? @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
   participants Participant[]
   messages     Message[]
 
+  @@index([workspaceId])
   @@map("conversations")
 }
 
@@ -189,6 +205,7 @@ model Message {
   channel   Channel? @relation(fields: [channelId], references: [id], onDelete: Cascade)
 
   attachments Attachment[]
+  reactions   MessageReaction[]
 
   // 🚀 THE THREADING ENGINE (Self-Referential Engine)
   parentMessageId String?
@@ -219,4 +236,36 @@ model Attachment {
 
   @@index([messageId])
   @@map("attachments")
+}
+
+model MessageReaction {
+  id        String   @id @default(cuid())
+  emoji     String
+  createdAt DateTime @default(now())
+
+  messageId String
+  message   Message @relation(fields: [messageId], references: [id], onDelete: Cascade)
+  userId    String
+  user      User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([messageId, userId, emoji])
+  @@index([messageId])
+  @@index([userId])
+  @@map("message_reactions")
+}
+
+model Notification {
+  id        String    @id @default(cuid())
+  type      String
+  title     String
+  body      String?   @db.Text
+  data      Json?
+  readAt    DateTime?
+  createdAt DateTime  @default(now())
+
+  recipientId String
+  recipient   User   @relation(fields: [recipientId], references: [id], onDelete: Cascade)
+
+  @@index([recipientId, readAt, createdAt])
+  @@map("notifications")
 }
