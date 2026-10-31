@@ -1,5 +1,10 @@
 import { Request, Response } from "express";
+import { ChannelType, Prisma } from "../generated/prisma/client";
 import prisma from "../config/db";
+import { authorizeRBAC } from "../utils/rbac";
+import {
+  channelMemberVisibilitySchema,
+} from "./channelGovernanceSchemas";
 
 export interface AuthenticatedRequest extends Request {
   user?: { userId: string };
@@ -27,6 +32,7 @@ export const createChannel = async (
           name: name.toLowerCase().trim().replace(/\s+/g, "-"),
           type,
           workspaceId,
+          ownerId: userId,
         },
       });
 
@@ -51,10 +57,22 @@ export const createChannel = async (
       return newChannel;
     });
 
-    // 🚀 THE REAL-TIME SYNC FIX: Broadcast the new public channel to the entire workspace
+    // Public channels are visible to all core workspace members. Private
+    // channels are delivered only to their explicit members (including the
+    // workspace owner that is added transactionally above).
     const io = req.app.get("socketio");
-    if (io && type === "PUBLIC") {
-      io.to(workspaceId).emit("channel_created", channel);
+    if (io) {
+      if (type === "PUBLIC") {
+        io.to(`workspace_${workspaceId}`).emit("channel_created", channel);
+      } else {
+        const privateMemberIds = await prisma.channelMember.findMany({
+          where: { channelId: channel.id },
+          select: { userId: true },
+        });
+        privateMemberIds.forEach(({ userId: memberId }) => {
+          io.to(memberId).emit("added_to_channel", channel);
+        });
+      }
     }
 
     res.status(201).json(channel);
@@ -86,16 +104,23 @@ export const getWorkspaceChannels = async (
     }
 
     // 🚀 THE GUEST ISOLATION ENGINE
-    let channelQuery: any = { workspaceId };
+    const channelQuery: Prisma.ChannelWhereInput = { workspaceId };
 
     if (memberRecord.role === "GUEST") {
       // Guests only see channels they are explicitly invited to (even PUBLIC ones)
-      channelQuery.members = {
-        some: { userId },
-      };
+      channelQuery.members = { some: { userId, isHidden: false } };
     } else {
       // Core members see all PUBLIC channels + PRIVATE channels they are part of
-      channelQuery.OR = [{ type: "PUBLIC" }, { members: { some: { userId } } }];
+      channelQuery.OR = [
+        {
+          type: ChannelType.PUBLIC,
+          NOT: { members: { some: { userId, isHidden: true } } },
+        },
+        {
+          type: ChannelType.PRIVATE,
+          members: { some: { userId, isHidden: false } },
+        },
+      ];
     }
 
     const channels = await prisma.channel.findMany({
@@ -145,6 +170,32 @@ export const markChannelAsRead = async (
       return;
     }
 
+    const channel = await prisma.channel.findUnique({
+      where: { id: channelId },
+      select: { id: true, type: true, workspaceId: true },
+    });
+    if (!channel) {
+      res.status(404).json({ error: "Channel not found" });
+      return;
+    }
+    const workspaceMember = await prisma.workspaceMember.findUnique({
+      where: { userId_workspaceId: { userId, workspaceId: channel.workspaceId } },
+      select: { role: true },
+    });
+    const explicitMembership = await prisma.channelMember.findUnique({
+      where: { userId_channelId: { userId, channelId } },
+      select: { id: true },
+    });
+    const canRead = workspaceMember && (
+      channel.type === "PUBLIC"
+        ? workspaceMember.role !== "GUEST" || Boolean(explicitMembership)
+        : Boolean(explicitMembership)
+    );
+    if (!canRead) {
+      res.status(403).json({ error: "Access denied for this channel" });
+      return;
+    }
+
     await prisma.channelMember.upsert({
       where: { userId_channelId: { userId, channelId } },
       update: { lastReadAt: new Date() },
@@ -182,6 +233,16 @@ export const inviteToChannel = async (
       return;
     }
 
+    const invitePermission = await authorizeRBAC(
+      inviterId,
+      channel.workspaceId,
+      "INVITE_USERS",
+    );
+    if (!invitePermission.allowed) {
+      res.status(403).json({ error: invitePermission.reason });
+      return;
+    }
+
     const isInviterInChannel = await prisma.channelMember.findUnique({
       where: { userId_channelId: { userId: inviterId, channelId } },
     });
@@ -207,8 +268,20 @@ export const inviteToChannel = async (
       return;
     }
 
+    const existingMemberships = await prisma.channelMember.findMany({
+      where: { channelId, userId: { in: validUserIds } },
+      select: { userId: true },
+    });
+    const existingUserIds = new Set(existingMemberships.map((member) => member.userId));
+    const usersToAdd = validUserIds.filter((id) => !existingUserIds.has(id));
+
+    if (usersToAdd.length === 0) {
+      res.status(409).json({ error: "Selected people are already channel members." });
+      return;
+    }
+
     await prisma.channelMember.createMany({
-      data: validUserIds.map((id) => ({
+      data: usersToAdd.map((id) => ({
         channelId,
         userId: id,
         lastReadAt: new Date(),
@@ -220,20 +293,208 @@ export const inviteToChannel = async (
     const io = req.app.get("socketio");
     if (io) {
       // Har newly invited user ko specific event bhejo
-      validUserIds.forEach((id) => {
+      usersToAdd.forEach((id) => {
         // user ki specific socket room mein emit kar rahe hain
         io.to(id).emit("added_to_channel", channel);
       });
     }
 
-    res.status(200).json({ success: true, addedUsers: validUserIds.length });
+    res.status(200).json({ success: true, addedUsers: usersToAdd.length });
   } catch (error) {
     console.error("❌ Channel Invite Failed:", error);
     res.status(500).json({ error: "Internal Server Error" });
   }
 };
 
-// 5. GET CHANNEL MEMBERS
+const emitChannelAccessUpdate = (
+  req: AuthenticatedRequest,
+  userId: string,
+  payload: { channelId: string; workspaceId: string; visible: boolean },
+) => {
+  const io = req.app.get("socketio");
+  io?.to(userId).emit("channel_access_updated", payload);
+};
+
+// 5. LEAVE CHANNEL
+// Public channels are hidden per user so they can be intentionally rejoined later;
+// private memberships are retained but hidden so the channel owner can restore access.
+export const leaveChannel = async (
+  req: AuthenticatedRequest,
+  res: Response,
+): Promise<void> => {
+  try {
+    const channelId = req.params.channelId as string;
+    const userId = req.user!.userId;
+    const channel = await prisma.channel.findUnique({ where: { id: channelId } });
+
+    if (!channel) {
+      res.status(404).json({ error: "Channel not found." });
+      return;
+    }
+    const workspaceMember = await prisma.workspaceMember.findUnique({
+      where: { userId_workspaceId: { userId, workspaceId: channel.workspaceId } },
+      select: { id: true },
+    });
+    if (!workspaceMember) {
+      res.status(403).json({ error: "You are not a workspace member." });
+      return;
+    }
+
+    await prisma.channelMember.upsert({
+      where: { userId_channelId: { userId, channelId } },
+      update: { isHidden: true },
+      create: { userId, channelId, isHidden: true },
+    });
+
+    emitChannelAccessUpdate(req, userId, {
+      channelId,
+      workspaceId: channel.workspaceId,
+      visible: false,
+    });
+    res.status(200).json({ success: true });
+  } catch (error) {
+    console.error("❌ Channel Leave Failed:", error);
+    res.status(500).json({ error: "Internal Server Error" });
+  }
+};
+
+// 6. DELETE CHANNEL (WORKSPACE OWNER ONLY)
+// Deletion is deliberately governed by workspace ownership, never by the
+// historical channel creator. The database cascade removes the channel's
+// memberships, messages, attachments, reactions, and thread descendants.
+export const deleteChannel = async (
+  req: AuthenticatedRequest,
+  res: Response,
+): Promise<void> => {
+  try {
+    const channelId = req.params.channelId as string;
+    const actorId = req.user!.userId;
+    const channel = await prisma.channel.findUnique({
+      where: { id: channelId },
+      select: {
+        id: true,
+        name: true,
+        type: true,
+        workspaceId: true,
+        members: { select: { userId: true } },
+      },
+    });
+
+    if (!channel) {
+      res.status(404).json({ error: "Channel not found." });
+      return;
+    }
+
+    const actorMembership = await prisma.workspaceMember.findUnique({
+      where: {
+        userId_workspaceId: { userId: actorId, workspaceId: channel.workspaceId },
+      },
+      select: { role: true },
+    });
+    if (actorMembership?.role !== "OWNER") {
+      res.status(403).json({
+        error: "Only the workspace owner can delete a channel.",
+      });
+      return;
+    }
+
+    await prisma.channel.delete({ where: { id: channelId } });
+
+    const io = req.app.get("socketio");
+    const payload = {
+      channelId: channel.id,
+      channelName: channel.name,
+      workspaceId: channel.workspaceId,
+    };
+    if (io) {
+      if (channel.type === "PUBLIC") {
+        io.to(`workspace_${channel.workspaceId}`).emit("channel_deleted", payload);
+      } else {
+        channel.members.forEach(({ userId }) => {
+          io.to(userId).emit("channel_deleted", payload);
+        });
+      }
+
+      // Explicitly detach all connected tabs from the obsolete channel room.
+      // This works with the configured Socket.IO adapter and prevents future
+      // broadcasts from targeting sockets that previously viewed the channel.
+      io.in(`channel_${channel.id}`).socketsLeave(`channel_${channel.id}`);
+    }
+
+    res.status(200).json({ success: true, ...payload });
+  } catch (error) {
+    console.error("❌ Channel Delete Failed:", error);
+    res.status(500).json({ error: "Internal Server Error" });
+  }
+};
+
+// 7. WORKSPACE-OWNER-MANAGED MEMBER VISIBILITY
+export const setChannelMemberVisibility = async (
+  req: AuthenticatedRequest,
+  res: Response,
+): Promise<void> => {
+  try {
+    const channelId = req.params.channelId as string;
+    const actorId = req.user!.userId;
+    const parsedPayload = channelMemberVisibilitySchema.safeParse(req.body);
+    if (!parsedPayload.success) {
+      res.status(400).json({ error: "A member and visibility value are required." });
+      return;
+    }
+    const { userId: targetUserId, visible } = parsedPayload.data;
+
+    const channel = await prisma.channel.findUnique({ where: { id: channelId } });
+    if (!channel) {
+      res.status(404).json({ error: "Channel not found." });
+      return;
+    }
+    const actorWorkspaceMembership = await prisma.workspaceMember.findUnique({
+      where: {
+        userId_workspaceId: { userId: actorId, workspaceId: channel.workspaceId },
+      },
+      select: { role: true },
+    });
+    if (actorWorkspaceMembership?.role !== "OWNER") {
+      res.status(403).json({
+        error: "Only the workspace owner can manage channel visibility.",
+      });
+      return;
+    }
+    if (targetUserId === actorId) {
+      res.status(400).json({ error: "You cannot change your own channel visibility." });
+      return;
+    }
+
+    const targetMembership = await prisma.workspaceMember.findUnique({
+      where: {
+        userId_workspaceId: { userId: targetUserId, workspaceId: channel.workspaceId },
+      },
+      select: { id: true },
+    });
+    if (!targetMembership) {
+      res.status(400).json({ error: "This person is not a workspace member." });
+      return;
+    }
+
+    await prisma.channelMember.upsert({
+      where: { userId_channelId: { userId: targetUserId, channelId } },
+      update: { isHidden: !visible },
+      create: { userId: targetUserId, channelId, isHidden: !visible },
+    });
+
+    emitChannelAccessUpdate(req, targetUserId, {
+      channelId,
+      workspaceId: channel.workspaceId,
+      visible,
+    });
+    res.status(200).json({ success: true });
+  } catch (error) {
+    console.error("❌ Channel Visibility Update Failed:", error);
+    res.status(500).json({ error: "Internal Server Error" });
+  }
+};
+
+// 8. GET CHANNEL MEMBERS
 export const getChannelMembers = async (
   req: AuthenticatedRequest,
   res: Response,
@@ -252,6 +513,15 @@ export const getChannelMembers = async (
       return;
     }
 
+    const workspaceMember = await prisma.workspaceMember.findUnique({
+      where: { userId_workspaceId: { userId, workspaceId: channel.workspaceId } },
+      select: { role: true },
+    });
+    if (!workspaceMember) {
+      res.status(403).json({ error: "Access denied. Not a workspace member." });
+      return;
+    }
+
     // 🛡️ SECURITY GATE for private channels
     if (channel.type === "PRIVATE") {
       const isMember = channel.members.some((m) => m.userId === userId);
@@ -259,6 +529,14 @@ export const getChannelMembers = async (
         res.status(403).json({
           error: "Access Denied. You are not a member of this private channel.",
         });
+        return;
+      }
+    }
+
+    if (channel.type === "PUBLIC" && workspaceMember.role === "GUEST") {
+      const isGuestInvited = channel.members.some((member) => member.userId === userId);
+      if (!isGuestInvited) {
+        res.status(403).json({ error: "Guests must be invited to access this channel." });
         return;
       }
     }
@@ -295,9 +573,13 @@ export const getChannelMembers = async (
         select: { userId: true, role: true },
       });
 
+      const visibilityByUserId = new Map(
+        explicitMembers.map((member) => [member.userId, member.isHidden]),
+      );
       const formattedCore = coreMembers.map((wm) => ({
         ...wm.user,
         role: wm.role,
+        isHidden: visibilityByUserId.get(wm.user.id) || false,
       }));
 
       const coreUserIds = new Set(formattedCore.map((m) => m.id));
@@ -307,7 +589,7 @@ export const getChannelMembers = async (
         .map((m) => {
           const role =
             explicitRoles.find((r) => r.userId === m.userId)?.role || "GUEST";
-          return { ...m.user, role };
+          return { ...m.user, role, isHidden: m.isHidden };
         });
 
       res.status(200).json([...formattedCore, ...formattedExplicit]);
@@ -337,6 +619,7 @@ export const getChannelMembers = async (
       return {
         ...m.user,
         role: workspaceMember ? workspaceMember.role : "MEMBER",
+        isHidden: m.isHidden,
       };
     });
 
