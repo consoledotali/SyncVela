@@ -11,7 +11,8 @@ export const requirePermission = (requiredPermission: Permission) => {
       const userId = req.user?.userId;
 
       // Workspace ID route params se aaye ya request body se
-      const workspaceId = req.params.workspaceId || req.body.workspaceId;
+      const workspaceId =
+        req.params.workspaceId || req.body.workspaceId || req.query.workspaceId;
 
       if (!userId || !workspaceId) {
         res.status(400).json({

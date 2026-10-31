@@ -1,6 +1,7 @@
 import { Response } from "express";
 import prisma from "../config/db";
 import { AuthenticatedRequest } from "./channelController";
+import { workspaceOwnershipTransferSchema } from "./workspaceGovernanceSchemas";
 
 // 1. CREATE WORKSPACE
 export const createWorkspace = async (
@@ -124,7 +125,7 @@ export const joinWorkspace = async (
     const io = req.app.get("socketio");
 
     if (io) {
-      io.to(workspace.id).emit("workspace_member_joined", {
+      io.to(`workspace_${workspace.id}`).emit("workspace_member_joined", {
         workspaceId: workspace.id,
         user: newMemberRecord.user,
       });
@@ -146,6 +147,7 @@ export const getWorkspaceMembers = async (
 ): Promise<void> => {
   try {
     const workspaceId = req.params.workspaceId as string;
+    const currentUserId = req.user!.userId;
 
     const workspace = await prisma.workspace.findUnique({
       where: { id: workspaceId },
@@ -153,7 +155,7 @@ export const getWorkspaceMembers = async (
         members: {
           include: {
             user: {
-              select: { id: true, name: true, email: true, avatarUrl: true },
+              select: { id: true, name: true, email: true, avatarUrl: true, isDeleted: true },
             },
           },
         },
@@ -165,18 +167,69 @@ export const getWorkspaceMembers = async (
       return;
     }
 
+    // Security check: requester must be a member of this workspace
+    const isRequesterMember = workspace.members.some(
+      (m) => m.userId === currentUserId,
+    );
+    if (!isRequesterMember) {
+      res.status(403).json({ error: "Access denied to workspace" });
+      return;
+    }
+
+    // Fetch all 1:1 conversations for current user in THIS workspace
+    const conversations = await prisma.conversation.findMany({
+      where: {
+        workspaceId,
+        isGroup: false,
+        participants: { some: { userId: currentUserId } },
+      },
+      include: {
+        participants: true,
+      },
+    });
+
+    const conversationByPeerId = new Map<string, (typeof conversations)[0]>();
+    for (const conv of conversations) {
+      const peer = conv.participants.find((p) => p.userId !== currentUserId);
+      if (peer) {
+        conversationByPeerId.set(peer.userId, conv);
+      }
+    }
+
     const membersWithTime = await Promise.all(
       workspace.members.map(async (m) => {
-        const lastMessage = await prisma.message.findFirst({
-          where: { senderId: m.user.id },
-          orderBy: { createdAt: "desc" },
-          select: { createdAt: true },
-        });
+        const conv = conversationByPeerId.get(m.user.id);
+        let unreadCount = 0;
+        let roomId: string | null = null;
+        let lastMessageAt: Date | null = null;
+        let isActiveChat = false;
+
+        if (conv) {
+          roomId = conv.id;
+          lastMessageAt = conv.lastMessageAt || null;
+          isActiveChat = !!conv.lastMessageAt;
+          const myParticipant = conv.participants.find(
+            (p) => p.userId === currentUserId,
+          );
+          unreadCount = await prisma.message.count({
+            where: {
+              conversationId: conv.id,
+              createdAt: { gt: myParticipant?.lastReadAt || new Date(0) },
+              senderId: { not: currentUserId },
+            },
+          });
+        }
 
         return {
-          ...m.user,
+          id: m.user.id,
+          name: m.user.isDeleted ? "Deleted User" : m.user.name,
+          email: m.user.isDeleted ? "" : m.user.email,
+          avatarUrl: m.user.isDeleted ? null : m.user.avatarUrl,
           role: m.role,
-          lastMessageAt: lastMessage ? lastMessage.createdAt : null,
+          roomId,
+          unreadCount,
+          lastMessageAt,
+          isActiveChat,
         };
       }),
     );
@@ -216,7 +269,7 @@ export const deleteWorkspace = async (
 
     const io = req.app.get("socketio");
     if (io) {
-      io.to(workspaceId).emit("workspace_deleted", workspaceId);
+      io.to(`workspace_${workspaceId}`).emit("workspace_deleted", workspaceId);
     }
 
     res
@@ -313,7 +366,7 @@ export const updateWorkspaceMemberRole = async (
     const io = req.app.get("socketio");
     if (io) {
       // Broadcast the role change to the workspace
-      io.to(workspaceId).emit("member_role_updated", {
+      io.to(`workspace_${workspaceId}`).emit("member_role_updated", {
         workspaceId,
         userId: targetUserId,
         newRole,
@@ -340,7 +393,80 @@ export const updateWorkspaceMemberRole = async (
   }
 };
 
-// 7. KICK MEMBER FROM WORKSPACE
+// 7. TRANSFER WORKSPACE OWNERSHIP
+export const transferWorkspaceOwnership = async (
+  req: AuthenticatedRequest,
+  res: Response,
+): Promise<void> => {
+  try {
+    const workspaceId = req.params.workspaceId as string;
+    const currentOwnerId = req.user!.userId;
+    const parsedPayload = workspaceOwnershipTransferSchema.safeParse(req.body);
+
+    if (!parsedPayload.success) {
+      res.status(400).json({ error: "A valid new workspace owner is required." });
+      return;
+    }
+
+    const { newOwnerId } = parsedPayload.data;
+    if (newOwnerId === currentOwnerId) {
+      res.status(400).json({ error: "You already own this workspace." });
+      return;
+    }
+
+    const [currentOwner, newOwner] = await Promise.all([
+      prisma.workspaceMember.findUnique({
+        where: {
+          userId_workspaceId: { userId: currentOwnerId, workspaceId },
+        },
+        select: { role: true },
+      }),
+      prisma.workspaceMember.findUnique({
+        where: { userId_workspaceId: { userId: newOwnerId, workspaceId } },
+        select: { userId: true },
+      }),
+    ]);
+
+    if (currentOwner?.role !== "OWNER") {
+      res.status(403).json({ error: "Only the current workspace owner can transfer ownership." });
+      return;
+    }
+    if (!newOwner) {
+      res.status(400).json({ error: "The new owner must already belong to this workspace." });
+      return;
+    }
+
+    await prisma.$transaction(async (tx) => {
+      const demotion = await tx.workspaceMember.updateMany({
+        where: {
+          userId: currentOwnerId,
+          workspaceId,
+          role: "OWNER",
+        },
+        data: { role: "ADMIN" },
+      });
+      if (demotion.count !== 1) {
+        throw new Error("Workspace ownership changed before this transfer could complete.");
+      }
+
+      await tx.workspaceMember.update({
+        where: { userId_workspaceId: { userId: newOwnerId, workspaceId } },
+        data: { role: "OWNER" },
+      });
+    });
+
+    const payload = { workspaceId, previousOwnerId: currentOwnerId, newOwnerId };
+    const io = req.app.get("socketio");
+    io?.to(`workspace_${workspaceId}`).emit("workspace_ownership_transferred", payload);
+
+    res.status(200).json({ success: true, ...payload });
+  } catch (error) {
+    console.error("❌ Workspace Ownership Transfer Failed:", error);
+    res.status(500).json({ error: "Unable to transfer workspace ownership." });
+  }
+};
+
+// 8. KICK MEMBER FROM WORKSPACE
 export const removeWorkspaceMember = async (
   req: AuthenticatedRequest,
   res: Response,
@@ -390,11 +516,12 @@ export const removeWorkspaceMember = async (
 
     const io = req.app.get("socketio");
     if (io) {
-      io.to(workspaceId).emit("member_kicked", {
+      io.to(`workspace_${workspaceId}`).emit("member_kicked", {
         workspaceId,
         userId: targetUserId,
       });
       io.to(targetUserId).emit("workspace_revoked", workspaceId);
+      io.in(targetUserId).socketsLeave(`workspace_${workspaceId}`);
     }
 
     res.status(200).json({

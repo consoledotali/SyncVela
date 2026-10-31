@@ -1,5 +1,5 @@
+import { MemberRole } from "../generated/prisma/client";
 import prisma from "../config/db";
-import { MemberRole } from "@prisma/client";
 
 // 1. Define all granular operations available in the system
 export type Permission =
@@ -9,7 +9,8 @@ export type Permission =
   | "INVITE_USERS"
   | "DELETE_WORKSPACE"
   | "MANAGE_WORKSPACE"
-  | "MANAGE_MESSAGES"; // 🚀 GOD MODE PERMISSION
+  | "MANAGE_MESSAGES"
+  | "CREATE_MESSAGE";
 
 // 2. 🚀 THE STATIC POLICY MATRIX (Zero DB Overhead)
 const ROLE_PERMISSIONS: Record<MemberRole, Permission[]> = {
@@ -20,16 +21,21 @@ const ROLE_PERMISSIONS: Record<MemberRole, Permission[]> = {
     "INVITE_USERS",
     "DELETE_WORKSPACE",
     "MANAGE_WORKSPACE",
-    "MANAGE_MESSAGES", // Owner can moderate
+    "MANAGE_MESSAGES",
+    "CREATE_MESSAGE",
   ],
   ADMIN: [
     "VIEW_WORKSPACE",
     "CREATE_CHANNEL",
-    "DELETE_CHANNEL",
     "INVITE_USERS",
-    "MANAGE_MESSAGES", // Admin can moderate
+    "MANAGE_MESSAGES",
+    "CREATE_MESSAGE",
   ],
-  MEMBER: ["VIEW_WORKSPACE"], // Members strictly view-only for architectural actions
+  MEMBER: [
+    "VIEW_WORKSPACE",
+    "CREATE_CHANNEL",
+    "CREATE_MESSAGE",
+  ],
   GUEST: ["VIEW_WORKSPACE"],
 };
 
