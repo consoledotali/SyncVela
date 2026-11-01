@@ -1,13 +1,24 @@
 import { Request, Response } from "express";
 import * as authService from "../services/authService";
-import jwt from "jsonwebtoken";
 
 const setRefreshTokenCookie = (res: Response, token: string): void => {
+  const sameSite = process.env.COOKIE_SAME_SITE === "none" ? "none" : "lax";
   res.cookie("refreshToken", token, {
     httpOnly: true,
-    secure: process.env.NODE_ENV === "production",
-    sameSite: "lax",
+    secure: process.env.NODE_ENV === "production" || sameSite === "none",
+    sameSite,
+    path: "/api/auth",
     maxAge: 7 * 24 * 60 * 60 * 1000,
+  });
+};
+
+const clearRefreshTokenCookie = (res: Response): void => {
+  const sameSite = process.env.COOKIE_SAME_SITE === "none" ? "none" : "lax";
+  res.clearCookie("refreshToken", {
+    httpOnly: true,
+    secure: process.env.NODE_ENV === "production" || sameSite === "none",
+    sameSite,
+    path: "/api/auth",
   });
 };
 
@@ -130,12 +141,10 @@ export const googleLoginHandler = async (
   }
 };
 
-// 🚀 HOT-SWAP COOKIE STATE RE-ROUTING PIPIELINE
 export const refreshAccessToken = async (
   req: Request,
   res: Response,
 ): Promise<void> => {
-  console.log("🛠️ --- DEBUG: REFRESH API HIT ---");
   try {
     const refreshToken = req.cookies?.refreshToken as string | undefined;
 
@@ -144,22 +153,17 @@ export const refreshAccessToken = async (
       return;
     }
 
-    const { accessToken } = await authService.refresh(refreshToken);
+    const {
+      user,
+      tokens: { accessToken, refreshToken: rotatedRefreshToken },
+    } = await authService.refresh(refreshToken);
+    setRefreshTokenCookie(res, rotatedRefreshToken);
 
-    // Sync state response cookie update taake layout fetch parallel blocks freeze na hon.
-    // httpOnly: true — frontend token JSON body/Authorization header se leta hai,
-    // is cookie ko JS se padhne ki zaroorat nahi, isliye XSS surface band.
-    res.cookie("accessToken", accessToken, {
-      httpOnly: true,
-      secure: process.env.NODE_ENV === "production",
-      sameSite: "lax",
-      maxAge: 15 * 60 * 1000,
-    });
-
-    res.status(200).json({ accessToken });
+    // Access tokens remain memory-only. The HttpOnly refresh cookie restores
+    // both the token and safe user profile after a hard browser refresh.
+    res.status(200).json({ accessToken, user });
   } catch (error: unknown) {
-    res.clearCookie("refreshToken");
-    res.clearCookie("accessToken");
+    clearRefreshTokenCookie(res);
     res
       .status(403)
       .json({ error: "Invalid refresh token. Please login again." });
@@ -173,14 +177,10 @@ export const logoutUser = async (
   try {
     const refreshToken = req.cookies?.refreshToken as string | undefined;
     if (refreshToken) {
-      const decoded = jwt.decode(refreshToken) as authService.JwtPayload | null;
-      if (decoded?.userId) {
-        await authService.logout(decoded.userId);
-      }
+      await authService.revokeRefreshToken(refreshToken);
     }
 
-    res.clearCookie("refreshToken");
-    res.clearCookie("accessToken");
+    clearRefreshTokenCookie(res);
     res.status(200).json({ message: "Logged out successfully" });
   } catch (error: unknown) {
     res.status(500).json({ error: "Logout failed" });

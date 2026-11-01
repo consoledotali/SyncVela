@@ -1,36 +1,29 @@
-# -----------------------------------
-# STAGE 1: BUILDER
-# -----------------------------------
-FROM node:20-alpine AS builder
-WORKDIR /app
+# syntax=docker/dockerfile:1.7
+FROM node:22.13.1-alpine3.21@sha256:e2b39f7b64281324929257d0f8004fb6cb4bf0fdfb9aa8cedb235a766aec31da AS builder
+WORKDIR /workspace/backend
 
-COPY package*.json ./
-COPY prisma ./prisma/
+COPY backend/package.json backend/package-lock.json ./
+COPY backend/prisma ./prisma
+RUN npm ci
 
-RUN npm install
+COPY backend .
+RUN DATABASE_URL=postgresql://prisma:prisma@127.0.0.1:5432/prisma npx prisma generate && npm run build
 
-# Prisma Schema generate karo
-RUN npx prisma generate
+FROM node:22.13.1-alpine3.21@sha256:e2b39f7b64281324929257d0f8004fb6cb4bf0fdfb9aa8cedb235a766aec31da AS runner
+WORKDIR /workspace/backend
 
-COPY . .
+ENV NODE_ENV=production \
+    PORT=5000
 
-# TypeScript ko compile karo
-RUN npm run build
+# Prisma CLI is an explicit production dependency so this immutable image can
+# run `prisma migrate deploy` without downloading a floating version at deploy time.
+COPY backend/package.json backend/package-lock.json ./
+COPY backend/prisma ./prisma
+RUN npm ci --omit=dev && DATABASE_URL=postgresql://prisma:prisma@127.0.0.1:5432/prisma npx prisma generate && npm cache clean --force
 
-# -----------------------------------
-# STAGE 2: RUNNER (Production)
-# -----------------------------------
-FROM node:20-alpine AS runner
-WORKDIR /app
+COPY --from=builder --chown=node:node /workspace/backend/dist ./dist
+COPY --chown=node:node backend/prisma ./prisma
 
-ENV NODE_ENV production
-
-# Sirf zaroori modules aur compiled JS files (dist) copy karo
-COPY --from=builder /app/package*.json ./
-COPY --from=builder /app/node_modules ./node_modules
-COPY --from=builder /app/prisma ./prisma
-COPY --from=builder /app/dist ./dist
-
+USER node
 EXPOSE 5000
-
 CMD ["node", "dist/server.js"]

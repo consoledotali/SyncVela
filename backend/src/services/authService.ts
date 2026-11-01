@@ -1,7 +1,7 @@
 import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
 import prisma from "../config/db";
-import { User } from "@prisma/client";
+import { User } from "../generated/prisma/client";
 import crypto from "crypto";
 import { validateEnterpriseEmail } from "../utils/emailValidator";
 import { sendOtpEmail, sendPasswordResetOtpEmail } from "./emailService";
@@ -14,9 +14,9 @@ export interface AuthTokens {
 
 export interface JwtPayload {
   userId: string;
+  jti?: string;
 }
 
-// 🛡️ SECURITY FIX: Typescript ko batao ke ab in mein se koi bhi sensitive cheez frontend par nahi jayegi
 export type SafeUser = Omit<
   User,
   | "password"
@@ -36,6 +36,19 @@ export interface AuthResponse {
 }
 
 const googleClient = new OAuth2Client(process.env.GOOGLE_CLIENT_ID);
+
+const hashRefreshToken = (token: string) =>
+  crypto.createHash("sha256").update(token).digest("hex");
+
+const tokensMatch = (storedHash: string | null, incomingToken: string) => {
+  if (!storedHash) return false;
+  const stored = Buffer.from(storedHash, "utf8");
+  const incoming = Buffer.from(hashRefreshToken(incomingToken), "utf8");
+  return (
+    stored.length === incoming.length &&
+    crypto.timingSafeEqual(stored, incoming)
+  );
+};
 
 // 🛡️ SECURITY FIX: Actual logic jo data ko filter karti hai
 const sanitizeUser = (user: User): SafeUser => {
@@ -62,14 +75,14 @@ export const generateAndStoreTokens = async (
     expiresIn: "15m",
   });
   const refreshToken = jwt.sign(
-    { userId },
+    { userId, jti: crypto.randomUUID() },
     (process.env.JWT_REFRESH_SECRET || process.env.JWT_SECRET) as string,
     { expiresIn: "7d" },
   );
 
   await prisma.user.update({
     where: { id: userId },
-    data: { refreshToken },
+    data: { refreshToken: hashRefreshToken(refreshToken) },
   });
 
   return { accessToken, refreshToken };
@@ -235,25 +248,20 @@ export const googleLogin = async (idToken: string): Promise<AuthResponse> => {
 
 export const refresh = async (
   incomingRefreshToken: string,
-): Promise<{ accessToken: string }> => {
+): Promise<AuthResponse> => {
   const decoded = jwt.verify(
     incomingRefreshToken,
     (process.env.JWT_REFRESH_SECRET || process.env.JWT_SECRET) as string,
   ) as JwtPayload;
 
-  const user = await prisma.user.findFirst({
-    where: { id: decoded.userId, refreshToken: incomingRefreshToken },
-  });
+  const user = await prisma.user.findUnique({ where: { id: decoded.userId } });
 
-  if (!user) throw new Error("Refresh token revoked or invalid");
+  if (!user || !tokensMatch(user.refreshToken, incomingRefreshToken)) {
+    throw new Error("Refresh token revoked or invalid");
+  }
 
-  const accessToken = jwt.sign(
-    { userId: user.id },
-    process.env.JWT_SECRET as string,
-    { expiresIn: "15m" },
-  );
-
-  return { accessToken };
+  const tokens = await generateAndStoreTokens(user.id);
+  return { user: sanitizeUser(user), tokens };
 };
 
 export const logout = async (userId: string): Promise<void> => {
@@ -261,6 +269,18 @@ export const logout = async (userId: string): Promise<void> => {
     where: { id: userId },
     data: { refreshToken: null },
   });
+};
+
+export const revokeRefreshToken = async (
+  incomingRefreshToken: string,
+): Promise<void> => {
+  const decoded = jwt.verify(
+    incomingRefreshToken,
+    (process.env.JWT_REFRESH_SECRET || process.env.JWT_SECRET) as string,
+  ) as JwtPayload;
+  const user = await prisma.user.findUnique({ where: { id: decoded.userId } });
+  if (!user || !tokensMatch(user.refreshToken, incomingRefreshToken)) return;
+  await logout(user.id);
 };
 
 export const requestPasswordReset = async (email: string) => {
