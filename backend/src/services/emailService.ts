@@ -1,9 +1,21 @@
 import { Resend } from "resend";
 
-const resend = new Resend(process.env.RESEND_API_KEY);
+let resendClient: Resend | null = null;
+
+function getResendClient(): Resend {
+  if (resendClient) return resendClient;
+
+  const apiKey = process.env.RESEND_API_KEY?.trim();
+  if (!apiKey) {
+    throw new Error("RESEND_API_KEY is required to send email.");
+  }
+
+  resendClient = new Resend(apiKey);
+  return resendClient;
+}
 
 export const sendOtpEmail = async (email: string, otp: string) => {
-  const { data, error } = await resend.emails.send({
+  const { data, error } = await getResendClient().emails.send({
     from: "SyncVela Security <noreply@syncvela.codes>",
     to: email,
     subject: "Your SyncVela Verification Code",
@@ -20,14 +32,14 @@ export const sendOtpEmail = async (email: string, otp: string) => {
   });
 
   if (error) {
-    console.error("❌ Resend Email Error:", error);
+    console.error("[email] OTP delivery failed", error);
     throw new Error("Failed to send OTP email.");
   }
   return data;
 };
 
 export const sendPasswordResetOtpEmail = async (email: string, otp: string) => {
-  const { data, error } = await resend.emails.send({
+  const { data, error } = await getResendClient().emails.send({
     from: "SyncVela Security <noreply@syncvela.codes>",
     to: email,
     subject: "Reset Your SyncVela Password",
@@ -43,6 +55,9 @@ export const sendPasswordResetOtpEmail = async (email: string, otp: string) => {
     `,
   });
 
-  if (error) console.error("❌ Resend Email Error:", error);
+  if (error) {
+    console.error("[email] password-reset delivery failed", error);
+    throw new Error("Failed to send password-reset email.");
+  }
   return data;
 };

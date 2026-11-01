@@ -13,57 +13,42 @@ import {
   confirmSetPasswordHandler,
 } from "../controllers/authController";
 import { authMiddleware } from "../middlewares/authMiddleware";
-import rateLimit from "express-rate-limit";
+import {
+  authOnboardingRateLimit,
+  authSessionRateLimit,
+  credentialRateLimit,
+} from "../middlewares/rateLimit";
 
 const router = Router();
 
-// 🛡️ SECURITY FIX: Brute-Force Protection
-// Ek IP address se 15 minute mein sirf 5 OTP attempts allowed hain.
-const otpLimiter = rateLimit({
-  windowMs: 15 * 60 * 1000, // 15 minutes
-  max: 5, // Limit each IP to 5 requests per windowMs
-  message: {
-    error: "Too many verification attempts. Please try again after 15 minutes.",
-  },
-  standardHeaders: true,
-  legacyHeaders: false,
-});
-
-const loginLimiter = rateLimit({
-  windowMs: 15 * 60 * 1000,
-  max: 10,
-  message: { error: "Too many login attempts. Please cool down." },
-});
-
-// Authentication Routes
-router.post("/register", registerUser);
-router.post("/login", loginLimiter, loginUser); // Login par limit laga di
-router.post("/verify-otp", otpLimiter, verifyOTPHandler);
-router.post("/resend-otp", otpLimiter, resendOtpHandler);
+router.post("/register", authOnboardingRateLimit, registerUser);
+router.post("/login", credentialRateLimit, loginUser);
+router.post("/verify-otp", authOnboardingRateLimit, verifyOTPHandler);
+router.post("/resend-otp", authOnboardingRateLimit, resendOtpHandler);
 
 // Google OAuth Route
-router.post("/google", googleLoginHandler);
+router.post("/google", credentialRateLimit, googleLoginHandler);
 
 // Password Reset Routes
-router.post("/forgot-password", forgotPasswordHandler);
-router.post("/reset-password", resetPasswordHandler);
+router.post("/forgot-password", authOnboardingRateLimit, forgotPasswordHandler);
+router.post("/reset-password", credentialRateLimit, resetPasswordHandler);
 
-// 🚀 ACCOUNT LINKING: authenticated Google user sets a password (OTP-verified)
+// Account-linking routes inherit the same shared auth limiter.
 router.post(
   "/set-password/request",
+  authOnboardingRateLimit,
   authMiddleware,
-  otpLimiter,
   requestSetPasswordHandler,
 );
 router.post(
   "/set-password/confirm",
+  credentialRateLimit,
   authMiddleware,
-  otpLimiter,
   confirmSetPasswordHandler,
 );
 
 // Security & Session Routes
-router.post("/refresh", refreshAccessToken);
-router.post("/logout", logoutUser);
+router.post("/refresh", authSessionRateLimit, refreshAccessToken);
+router.post("/logout", authSessionRateLimit, logoutUser);
 
 export default router;
