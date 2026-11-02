@@ -1,35 +1,95 @@
 import { Server, Socket } from "socket.io";
 import prisma from "../../config/db";
+import {
+  deliveryReceiptPayloadSchema,
+  directMessagePayloadSchema,
+  roomIdPayloadSchema,
+  socketIdentifierSchema,
+} from "../../features/chat/validation/socketSchemas";
 import { signAttachments } from "../../utils/s3";
+import { consumeSocketRateLimit } from "../socketSecurity";
+
+const getAuthorizedDirectConversation = async (
+  conversationId: string,
+  participantId: string,
+) =>
+  prisma.conversation.findFirst({
+    where: {
+      id: conversationId,
+      isGroup: false,
+      participants: { some: { userId: participantId } },
+    },
+    select: {
+      id: true,
+      workspaceId: true,
+      participants: { select: { userId: true } },
+    },
+  });
 
 export const registerDMHandlers = (
   io: Server,
   socket: Socket,
   userId: string,
 ) => {
-  // 1. JOIN PRIVATE CHAT (WITH IDENTITY SHIELD)
-  socket.on("joinPrivateChat", async (targetUserId: string) => {
+  // 1. JOIN PRIVATE CHAT (WITH IDENTITY SHIELD & WORKSPACE ISOLATION)
+  socket.on("joinPrivateChat", async (rawPayload: unknown) => {
     try {
-      if (!targetUserId || targetUserId === userId) return;
+      let targetUserId = "";
+      let workspaceId: string | null = null;
+
+      if (typeof rawPayload === "string") {
+        targetUserId = rawPayload;
+      } else if (rawPayload && typeof rawPayload === "object") {
+        const obj = rawPayload as Record<string, unknown>;
+        if (typeof obj.targetUserId === "string") targetUserId = obj.targetUserId;
+        if (typeof obj.workspaceId === "string") workspaceId = obj.workspaceId;
+      }
+
+      const target = socketIdentifierSchema.safeParse(targetUserId);
+      if (!target.success) return;
+      if (!(await consumeSocketRateLimit(userId, "dm-join", 20, 60_000))) return;
+      if (target.data === userId) return;
 
       const targetExists = await prisma.user.findUnique({
-        where: { id: targetUserId },
+        where: { id: target.data },
         select: { id: true },
       });
 
       if (!targetExists) {
         console.warn(
-          `⚠️ [DM Guard] Blocked room join attempt. Target user ${targetUserId} does not exist.`,
+          `⚠️ [DM Guard] Blocked room join attempt. Target user ${target.data} does not exist.`,
         );
         return;
+      }
+
+      // If workspaceId is provided, verify both users belong to this workspace
+      if (workspaceId) {
+        const [userMembership, targetMembership] = await Promise.all([
+          prisma.workspaceMember.findUnique({
+            where: { userId_workspaceId: { userId, workspaceId } },
+            select: { userId: true },
+          }),
+          prisma.workspaceMember.findUnique({
+            where: { userId_workspaceId: { userId: target.data, workspaceId } },
+            select: { userId: true },
+          }),
+        ]);
+
+        if (!userMembership || !targetMembership) {
+          console.warn(
+            `⚠️ [DM Guard] Blocked room join. Both users must belong to workspace ${workspaceId}.`,
+          );
+          return;
+        }
       }
 
       let conversation = await prisma.conversation.findFirst({
         where: {
           isGroup: false,
+          workspaceId: workspaceId || null,
           AND: [
             { participants: { some: { userId: userId } } },
-            { participants: { some: { userId: targetUserId } } },
+            { participants: { some: { userId: target.data } } },
           ],
         },
       });
@@ -38,7 +98,8 @@ export const registerDMHandlers = (
         conversation = await prisma.conversation.create({
           data: {
             isGroup: false,
-            participants: { create: [{ userId }, { userId: targetUserId }] },
+            workspaceId: workspaceId || null,
+            participants: { create: [{ userId }, { userId: target.data }] },
           },
         });
       }
@@ -53,6 +114,16 @@ export const registerDMHandlers = (
   // 2. SEND PRIVATE MESSAGE (WITH CRASH BARRIER & THREADING)
   socket.on("sendPrivateMessage", async (payload: any, callback: any) => {
     try {
+      const parsed = directMessagePayloadSchema.safeParse(payload);
+      if (!parsed.success) {
+        callback?.({ error: "Invalid private-message payload." });
+        return;
+      }
+      if (!(await consumeSocketRateLimit(userId, "dm-message", 40, 60_000))) {
+        if (callback) callback({ error: "Too many messages. Please slow down." });
+        return;
+      }
+
       const {
         roomId,
         targetUserId,
@@ -60,17 +131,12 @@ export const registerDMHandlers = (
         attachments,
         tempId,
         parentMessageId,
-      } = payload;
-      const textData = text || payload.content;
+      } = parsed.data;
+      const textData = text || parsed.data.content;
 
       const hasText = textData && textData.trim() !== "";
       const hasAttachments =
         Array.isArray(attachments) && attachments.length > 0;
-
-      if (!targetUserId || (!hasText && !hasAttachments)) {
-        if (callback) callback({ error: "Invalid payload strings." });
-        return;
-      }
 
       const targetExists = await prisma.user.findUnique({
         where: { id: targetUserId },
@@ -78,52 +144,69 @@ export const registerDMHandlers = (
       });
 
       if (!targetExists) {
-        console.error(
-          `🚨 [DM Alert] Aborted message creation. Target user ${targetUserId} is missing from DB.`,
+        // A stale sidebar entry can outlive a deleted account. This is a
+        // recoverable client-state condition, not a server exception.
+        console.warn(
+          `[DM] Recipient unavailable; removing stale direct-message entry for ${targetUserId}.`,
         );
-        if (callback) callback({ error: "Recipient user no longer exists." });
+        socket.emit("dm_recipient_unavailable", {
+          userId: targetUserId,
+          reason: "recipient_unavailable",
+        });
+        callback?.({
+          error: "Recipient user is no longer available.",
+          code: "RECIPIENT_UNAVAILABLE",
+        });
         return;
       }
 
-      let validConversationId = roomId;
+      let conversation:
+        | { id: string; workspaceId: string | null; participants: { userId: string }[] }
+        | null = null;
 
       if (roomId) {
-        const existingConvo = await prisma.conversation.findUnique({
-          where: { id: roomId },
-          select: { id: true },
-        });
-        if (!existingConvo) validConversationId = null;
-      }
+        conversation = await getAuthorizedDirectConversation(roomId, userId);
+        const targetIsParticipant = conversation?.participants.some(
+          (participant) => participant.userId === targetUserId,
+        );
 
-      if (!validConversationId) {
-        let fallbackConvo = await prisma.conversation.findFirst({
+        if (!conversation || !targetIsParticipant) {
+          if (callback)
+            callback({ error: "You are not authorized for this conversation." });
+          return;
+        }
+      } else {
+        conversation = await prisma.conversation.findFirst({
           where: {
             isGroup: false,
+            workspaceId: parsed.data.workspaceId || null,
             AND: [
               { participants: { some: { userId: userId } } },
               { participants: { some: { userId: targetUserId } } },
             ],
           },
+          select: { id: true, workspaceId: true, participants: { select: { userId: true } } },
         });
 
-        if (!fallbackConvo) {
-          fallbackConvo = await prisma.conversation.create({
+        if (!conversation) {
+          conversation = await prisma.conversation.create({
             data: {
               isGroup: false,
+              workspaceId: parsed.data.workspaceId || null,
               participants: {
                 create: [{ userId: userId }, { userId: targetUserId }],
               },
             },
+            select: { id: true, workspaceId: true, participants: { select: { userId: true } } },
           });
         }
-        validConversationId = fallbackConvo.id;
       }
 
       const savedMessage = await prisma.message.create({
         data: {
           content: hasText ? textData.trim() : null,
           senderId: userId,
-          conversationId: validConversationId,
+          conversationId: conversation.id,
           parentMessageId: parentMessageId || null,
 
           attachments: hasAttachments
@@ -150,11 +233,16 @@ export const registerDMHandlers = (
         attachments: await signAttachments(savedMessage.attachments),
       };
 
-      const broadcastPayload = { ...signedMessage, tempId };
+      const broadcastPayload = {
+        ...signedMessage,
+        tempId,
+        workspaceId: conversation.workspaceId,
+      };
 
-      // Emit to sender and target strictly
-      socket.emit("receiveMessage", broadcastPayload);
-      io.to(targetUserId).emit("receiveMessage", broadcastPayload);
+      // All recipients are loaded from the persisted conversation, never the client payload.
+      conversation.participants.forEach((participant) => {
+        io.to(participant.userId).emit("receiveMessage", broadcastPayload);
+      });
 
       if (tempId) {
         socket.emit("messageSentAck", { tempId, realId: savedMessage.id });
@@ -173,57 +261,88 @@ export const registerDMHandlers = (
   // 3. MARK AS READ (WITH CONTEXT SHIELD)
   socket.on(
     "markAsRead",
-    async (payload: { roomId: string; targetUserId: string }) => {
+    async (payload: unknown) => {
       try {
-        if (!payload.roomId) return;
+        const parsed = roomIdPayloadSchema.safeParse(payload);
+        if (!parsed.success) return;
+        const { roomId } = parsed.data;
+        if (!(await consumeSocketRateLimit(userId, "dm-read", 120, 60_000))) return;
 
-        const convoExists = await prisma.conversation.findUnique({
-          where: { id: payload.roomId },
-          select: { id: true },
-        });
-        if (!convoExists) return;
+        const conversation = await getAuthorizedDirectConversation(
+          roomId,
+          userId,
+        );
+        if (!conversation) return;
 
         const serverReadTime = new Date();
         await prisma.participant.update({
           where: {
-            userId_conversationId: { userId, conversationId: payload.roomId },
+            userId_conversationId: { userId, conversationId: roomId },
           },
           data: { lastReadAt: serverReadTime },
         });
 
-        if (payload.targetUserId) {
-          // Alert sender that their message is read
-          io.to(payload.targetUserId).emit("messagesRead", {
-            roomId: payload.roomId,
+        conversation.participants
+          .filter((participant) => participant.userId !== userId)
+          .forEach((participant) => {
+            io.to(participant.userId).emit("messagesRead", {
+            roomId,
             readAt: serverReadTime.toISOString(),
           });
-        }
+          });
       } catch (error) {
         console.error("❌ Mark as read failed safely:", error);
       }
     },
   );
 
-  socket.on("markAsDelivered", (payload: any) => {
-    if (payload && payload.senderId) {
-      io.to(payload.senderId).emit("messageDelivered", {
-        messageId: payload.messageId,
-        tempId: payload.tempId,
+  socket.on("markAsDelivered", async (payload: unknown) => {
+    const parsed = deliveryReceiptPayloadSchema.safeParse(payload);
+    if (!parsed.success) return;
+    const { messageId, tempId } = parsed.data;
+    if (!(await consumeSocketRateLimit(userId, "dm-delivery", 180, 60_000))) return;
+
+    const message = await prisma.message.findFirst({
+      where: {
+        id: messageId,
+        conversation: { participants: { some: { userId } } },
+      },
+      select: { senderId: true },
+    });
+
+    if (message && message.senderId !== userId) {
+      io.to(message.senderId).emit("messageDelivered", {
+        messageId,
+        tempId,
       });
     }
   });
 
-  socket.on("typing", (payload: any) => {
-    if (payload && payload.targetUserId) {
-      io.to(payload.targetUserId).emit("userTyping", { senderId: userId });
-    }
+  socket.on("typing", async (payload: unknown) => {
+    const parsed = roomIdPayloadSchema.safeParse(payload);
+    if (!parsed.success) return;
+    const { roomId } = parsed.data;
+    if (!(await consumeSocketRateLimit(userId, "dm-typing", 60, 60_000))) return;
+    const conversation = await getAuthorizedDirectConversation(roomId, userId);
+    conversation?.participants
+      .filter((participant) => participant.userId !== userId)
+      .forEach((participant) => {
+        io.to(participant.userId).emit("userTyping", { senderId: userId });
+      });
   });
 
-  socket.on("stopTyping", (payload: any) => {
-    if (payload && payload.targetUserId) {
-      io.to(payload.targetUserId).emit("userStoppedTyping", {
-        senderId: userId,
+  socket.on("stopTyping", async (payload: unknown) => {
+    const parsed = roomIdPayloadSchema.safeParse(payload);
+    if (!parsed.success) return;
+    const { roomId } = parsed.data;
+    if (!(await consumeSocketRateLimit(userId, "dm-stop-typing", 60, 60_000))) return;
+    const conversation = await getAuthorizedDirectConversation(roomId, userId);
+    conversation?.participants
+      .filter((participant) => participant.userId !== userId)
+      .forEach((participant) => {
+        io.to(participant.userId).emit("userStoppedTyping", {
+          senderId: userId,
+        });
       });
-    }
   });
 };

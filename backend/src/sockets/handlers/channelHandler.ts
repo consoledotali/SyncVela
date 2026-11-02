@@ -1,66 +1,95 @@
 import { Server, Socket } from "socket.io";
 import prisma from "../../config/db";
+import {
+  channelIdPayloadSchema,
+  channelMessagePayloadSchema,
+  socketIdentifierSchema,
+} from "../../features/chat/validation/socketSchemas";
 import { signAttachments } from "../../utils/s3";
+import { authorizeRBAC } from "../../utils/rbac";
+import { canAccessChannel, consumeSocketRateLimit } from "../socketSecurity";
 
 export const registerChannelHandlers = (
   io: Server,
   socket: Socket,
   userId: string,
 ) => {
-  socket.on("join_channel", (channelId: string) => {
-    socket.join(`channel_${channelId}`);
+  socket.on("join_channel", async (channelId: string, callback?: (result: { error?: string; ok?: true }) => void) => {
+    const parsed = socketIdentifierSchema.safeParse(channelId);
+    if (!parsed.success) {
+      callback?.({ error: "A valid channel is required" });
+      return;
+    }
+    if (!(await consumeSocketRateLimit(userId, "channel-join", 30, 60_000))) {
+      callback?.({ error: "Join rate limit exceeded" });
+      return;
+    }
+    const channel = await canAccessChannel(userId, parsed.data);
+    if (!channel) {
+      callback?.({ error: "Channel access denied" });
+      return;
+    }
+    socket.join(`channel_${parsed.data}`);
+    callback?.({ ok: true });
   });
 
-  socket.on("leave_channel", (channelId: string) => {
-    socket.leave(`channel_${channelId}`);
+  socket.on("leave_channel", async (channelId: string) => {
+    const parsed = socketIdentifierSchema.safeParse(channelId);
+    if (!parsed.success) return;
+    if (!(await consumeSocketRateLimit(userId, "channel-leave", 60, 60_000))) return;
+    socket.leave(`channel_${parsed.data}`);
   });
+
+  const broadcastChannelTyping = async (
+    payload: unknown,
+    eventName: "channel_typing" | "channel_stop_typing",
+  ) => {
+    const parsed = channelIdPayloadSchema.safeParse(payload);
+    if (!parsed.success) return;
+    if (!(await consumeSocketRateLimit(userId, `channel-${eventName}`, 120, 60_000))) {
+      return;
+    }
+    if (!(await canAccessChannel(userId, parsed.data.channelId))) return;
+
+    socket.to(`channel_${parsed.data.channelId}`).emit(eventName, {
+      channelId: parsed.data.channelId,
+      userId,
+    });
+  };
+
+  socket.on("channel_typing", (payload: unknown) =>
+    broadcastChannelTyping(payload, "channel_typing"),
+  );
+  socket.on("channel_stop_typing", (payload: unknown) =>
+    broadcastChannelTyping(payload, "channel_stop_typing"),
+  );
 
   socket.on("send_channel_message", async (payload: any, callback: any) => {
     try {
-      const textData = payload.text || payload.content;
+      const parsed = channelMessagePayloadSchema.safeParse(payload);
+      if (!parsed.success) {
+        callback?.({ error: "Invalid channel-message payload." });
+        return;
+      }
+      if (!(await consumeSocketRateLimit(userId, "channel-message", 40, 60_000))) {
+        callback?.({ error: "Message rate limit exceeded" });
+        return;
+      }
+      const textData = parsed.data.text || parsed.data.content;
 
       // 🚀 THREADING ENGINE: Extract parentMessageId from frontend payload
-      const { channelId, attachments, tempId, parentMessageId } = payload;
+      const { channelId, attachments, tempId, parentMessageId } = parsed.data;
 
       const hasText = textData && textData.trim() !== "";
       const hasAttachments =
         Array.isArray(attachments) && attachments.length > 0;
 
-      if (!channelId || (!hasText && !hasAttachments)) return;
-
       // 🛡️ AUTHORIZATION: Sender ko is channel ka member hona chahiye.
       // PUBLIC channel ke liye workspace-member kaafi, PRIVATE ke liye ChannelMember.
-      const channel = await prisma.channel.findUnique({
-        where: { id: channelId },
-        select: { workspaceId: true, type: true },
-      });
+      const channel = await canAccessChannel(userId, channelId);
       if (!channel) {
-        if (callback) callback({ error: "Channel not found" });
+        callback?.({ error: "Channel access denied" });
         return;
-      }
-
-      const workspaceMember = await prisma.workspaceMember.findUnique({
-        where: {
-          userId_workspaceId: { userId, workspaceId: channel.workspaceId },
-        },
-        select: { userId: true },
-      });
-      if (!workspaceMember) {
-        if (callback)
-          callback({ error: "You are not a member of this workspace." });
-        return;
-      }
-
-      if (channel.type === "PRIVATE") {
-        const channelMember = await prisma.channelMember.findUnique({
-          where: { userId_channelId: { userId, channelId } },
-          select: { userId: true },
-        });
-        if (!channelMember) {
-          if (callback)
-            callback({ error: "You don't have access to this channel." });
-          return;
-        }
       }
 
       const message = await prisma.message.create({
@@ -102,6 +131,16 @@ export const registerChannelHandlers = (
         broadcastPayload,
       );
 
+      if (parentMessageId) {
+        const replyCount = await prisma.message.count({
+          where: { parentMessageId },
+        });
+        io.to(`channel_${channelId}`).emit("thread_parent_updated", {
+          parentMessageId,
+          replyCount,
+        });
+      }
+
       if (tempId) {
         socket.emit("messageSentAck", { tempId, realId: message.id });
       }
@@ -118,8 +157,13 @@ export const registerChannelHandlers = (
 
   socket.on(
     "markChannelAsRead",
-    async ({ channelId }: { channelId: string }) => {
+    async (payload: unknown) => {
       try {
+        const parsed = channelIdPayloadSchema.safeParse(payload);
+        if (!parsed.success) return;
+        const { channelId } = parsed.data;
+        if (!(await consumeSocketRateLimit(userId, "channel-read", 120, 60_000))) return;
+        if (!(await canAccessChannel(userId, channelId))) return;
         await prisma.channelMember.upsert({
           where: { userId_channelId: { userId, channelId } },
           update: { lastReadAt: new Date() },
@@ -131,9 +175,31 @@ export const registerChannelHandlers = (
     },
   );
 
-  socket.on("notify_channel_invites", ({ channel, userIds }) => {
-    if (!channel || !userIds || !Array.isArray(userIds)) return;
-    userIds.forEach((targetUserId: string) => {
+  socket.on("notify_channel_invites", async (payload: unknown) => {
+    const parsed = channelIdPayloadSchema.safeParse(payload);
+    if (!parsed.success) return;
+    const { channelId } = parsed.data;
+    if (!(await consumeSocketRateLimit(userId, "channel-invite-notify", 20, 60_000))) return;
+
+    const channel = await prisma.channel.findUnique({
+      where: { id: channelId },
+      select: {
+        id: true,
+        name: true,
+        type: true,
+        workspaceId: true,
+      },
+    });
+    if (!channel) return;
+
+    const permission = await authorizeRBAC(userId, channel.workspaceId, "INVITE_USERS");
+    if (!permission.allowed) return;
+
+    const members = await prisma.channelMember.findMany({
+      where: { channelId },
+      select: { userId: true },
+    });
+    members.forEach(({ userId: targetUserId }) => {
       io.to(targetUserId).emit("added_to_channel", channel);
     });
   });
