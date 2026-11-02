@@ -3,13 +3,10 @@ import prisma from "../config/db";
 import { AuthenticatedRequest } from "./channelController";
 import { signMessageAttachments, signAttachments } from "../utils/s3";
 
-// 🛡️ AUTH HELPERS
-// Channel access: PUBLIC channel ke liye workspace-member hona kaafi hai,
-// PRIVATE channel ke liye ChannelMember record chahiye.
-const canAccessChannel = async (
-  userId: string,
-  channelId: string,
-): Promise<boolean> => {
+const reactionInclude = { select: { emoji: true, userId: true } } as const;
+
+// PUBLIC channels are workspace-visible; PRIVATE channels additionally need an invite.
+const canAccessChannel = async (userId: string, channelId: string): Promise<boolean> => {
   const channel = await prisma.channel.findUnique({
     where: { id: channelId },
     select: { workspaceId: true, type: true },
@@ -21,31 +18,20 @@ const canAccessChannel = async (
     select: { userId: true },
   });
   if (!workspaceMember) return false;
+  if (channel.type !== "PRIVATE") return true;
 
-  if (channel.type === "PRIVATE") {
-    const channelMember = await prisma.channelMember.findUnique({
-      where: { userId_channelId: { userId, channelId } },
-      select: { userId: true },
-    });
-    return !!channelMember;
-  }
-
-  return true;
+  return !!(await prisma.channelMember.findUnique({
+    where: { userId_channelId: { userId, channelId } },
+    select: { userId: true },
+  }));
 };
 
-// Conversation (DM) access: user us conversation ka participant hona chahiye.
-const isConversationParticipant = async (
-  userId: string,
-  conversationId: string,
-): Promise<boolean> => {
-  const participant = await prisma.participant.findUnique({
+const isConversationParticipant = async (userId: string, conversationId: string): Promise<boolean> =>
+  !!(await prisma.participant.findUnique({
     where: { userId_conversationId: { userId, conversationId } },
     select: { userId: true },
-  });
-  return !!participant;
-};
+  }));
 
-// 1. GET CHANNEL MESSAGES (MAIN CHAT ONLY)
 export const getChannelMessages = async (
   req: AuthenticatedRequest,
   res: Response,
@@ -54,43 +40,40 @@ export const getChannelMessages = async (
     const channelId = req.params.channelId as string;
     const userId = req.user!.userId;
     const cursor = req.query.cursor as string | undefined;
-    const LIMIT = 50;
+    const limit = 50;
 
-    // 🛡️ AUTHORIZATION: User ko is channel ka access hona chahiye
-    const authorized = await canAccessChannel(userId, channelId);
-    if (!authorized) {
+    if (!(await canAccessChannel(userId, channelId))) {
       res.status(403).json({ error: "You don't have access to this channel." });
       return;
     }
 
     const messages = await prisma.message.findMany({
-      // 🚀 SHIELD: Sirf main messages lao, replies ko main chat se block karo
       where: { channelId, parentMessageId: null },
-      take: LIMIT,
+      take: limit,
       skip: cursor ? 1 : 0,
       cursor: cursor ? { id: cursor } : undefined,
       orderBy: { createdAt: "desc" },
       include: {
-        sender: { select: { id: true, name: true, avatarUrl: true } },
+        sender: { select: { id: true, name: true, avatarUrl: true, isDeleted: true } },
         attachments: true,
-        // 🚀 ENTERPRISE FEATURE: Count total replies so frontend can show "4 replies" button
+        reactions: reactionInclude,
         _count: { select: { replies: true } },
       },
     });
 
-    const hasMore = messages.length === LIMIT;
+    const hasMore = messages.length === limit;
     const nextCursor = hasMore ? messages[messages.length - 1].id : null;
-
-    const signed = await signMessageAttachments(messages.reverse());
-
-    res.status(200).json({ messages: signed, hasMore, nextCursor });
+    res.status(200).json({
+      messages: await signMessageAttachments(messages.reverse()),
+      hasMore,
+      nextCursor,
+    });
   } catch (error) {
     console.error("❌ [BACKEND] Fetching Channel History Failed:", error);
     res.status(500).json({ error: "Internal Server Error" });
   }
 };
 
-// 2. GET DIRECT MESSAGES (MAIN CHAT ONLY)
 export const getDirectMessages = async (
   req: AuthenticatedRequest,
   res: Response,
@@ -99,43 +82,35 @@ export const getDirectMessages = async (
     const conversationId = req.params.roomId as string;
     const userId = req.user!.userId;
     const cursor = req.query.cursor as string | undefined;
-    const LIMIT = 50;
+    const limit = 50;
 
-    // 🛡️ AUTHORIZATION: User is conversation ka participant hona chahiye
-    const authorized = await isConversationParticipant(userId, conversationId);
-    if (!authorized) {
-      res
-        .status(403)
-        .json({ error: "You don't have access to this conversation." });
+    if (!(await isConversationParticipant(userId, conversationId))) {
+      res.status(403).json({ error: "You don't have access to this conversation." });
       return;
     }
 
     const messages = await prisma.message.findMany({
-      // 🚀 SHIELD: Main chat mein sirf root messages bhejo
       where: { conversationId, parentMessageId: null },
-      take: LIMIT,
+      take: limit,
       skip: cursor ? 1 : 0,
       cursor: cursor ? { id: cursor } : undefined,
       orderBy: { createdAt: "desc" },
       include: {
-        sender: { select: { id: true, name: true, avatarUrl: true } },
+        sender: { select: { id: true, name: true, avatarUrl: true, isDeleted: true } },
         attachments: true,
+        reactions: reactionInclude,
         _count: { select: { replies: true } },
       },
     });
-
     const participants = await prisma.participant.findMany({
       where: { conversationId },
       select: { userId: true, lastReadAt: true },
     });
-
-    const hasMore = messages.length === LIMIT;
+    const hasMore = messages.length === limit;
     const nextCursor = hasMore ? messages[messages.length - 1].id : null;
 
-    const signed = await signMessageAttachments(messages.reverse());
-
     res.status(200).json({
-      messages: signed,
+      messages: await signMessageAttachments(messages.reverse()),
       hasMore,
       nextCursor,
       participants,
@@ -146,20 +121,71 @@ export const getDirectMessages = async (
   }
 };
 
-// 3. 🚀 NEW: GET THREAD MESSAGES (Parent + Replies)
+export const searchMessages = async (
+  req: AuthenticatedRequest,
+  res: Response,
+): Promise<void> => {
+  try {
+    const query = typeof req.query.q === "string" ? req.query.q.trim() : "";
+    const cursor = typeof req.query.cursor === "string" ? req.query.cursor : undefined;
+    const channelId = typeof req.query.channelId === "string" ? req.query.channelId : undefined;
+    const conversationId = typeof req.query.conversationId === "string" ? req.query.conversationId : undefined;
+    const limit = 30;
+
+    if (query.length < 2 || query.length > 200 || (!channelId && !conversationId) || (channelId && conversationId)) {
+      res.status(400).json({ error: "A search query of 2-200 characters and exactly one conversation scope is required." });
+      return;
+    }
+
+    const userId = req.user!.userId;
+    if (channelId ? !(await canAccessChannel(userId, channelId)) : !(await isConversationParticipant(userId, conversationId!))) {
+      res.status(403).json({ error: "You don't have access to this conversation." });
+      return;
+    }
+
+    const messages = await prisma.message.findMany({
+      where: {
+        ...(channelId ? { channelId } : { conversationId }),
+        parentMessageId: null,
+        content: { contains: query, mode: "insensitive" },
+      },
+      take: limit,
+      skip: cursor ? 1 : 0,
+      cursor: cursor ? { id: cursor } : undefined,
+      orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+      include: {
+        sender: { select: { id: true, name: true, avatarUrl: true, isDeleted: true } },
+        attachments: true,
+        reactions: reactionInclude,
+        _count: { select: { replies: true } },
+      },
+    });
+
+    const hasMore = messages.length === limit;
+    const nextCursor = hasMore ? messages[messages.length - 1].id : null;
+    res.status(200).json({
+      messages: await signMessageAttachments(messages.reverse()),
+      hasMore,
+      nextCursor,
+    });
+  } catch (error) {
+    console.error("❌ [BACKEND] Message search failed:", error);
+    res.status(500).json({ error: "Internal Server Error" });
+  }
+};
+
 export const getThreadMessages = async (
   req: AuthenticatedRequest,
   res: Response,
 ): Promise<void> => {
   try {
     const parentId = req.params.parentId as string;
-
-    // Pehle root message lao
     const parentMessage = await prisma.message.findUnique({
       where: { id: parentId },
       include: {
-        sender: { select: { id: true, name: true, avatarUrl: true } },
+        sender: { select: { id: true, name: true, avatarUrl: true, isDeleted: true } },
         attachments: true,
+        reactions: reactionInclude,
         _count: { select: { replies: true } },
       },
     });
@@ -169,38 +195,35 @@ export const getThreadMessages = async (
       return;
     }
 
-    // 🛡️ AUTHORIZATION: Thread ke root message ke channel/conversation ka access check karo
     const userId = req.user!.userId;
     const authorized = parentMessage.channelId
       ? await canAccessChannel(userId, parentMessage.channelId)
       : parentMessage.conversationId
         ? await isConversationParticipant(userId, parentMessage.conversationId)
         : false;
-
     if (!authorized) {
       res.status(403).json({ error: "You don't have access to this thread." });
       return;
     }
 
-    // Ab uske saare replies lao (Oldest first for chronological reading)
     const replies = await prisma.message.findMany({
       where: { parentMessageId: parentId },
       orderBy: { createdAt: "asc" },
       include: {
-        sender: { select: { id: true, name: true, avatarUrl: true } },
+        sender: { select: { id: true, name: true, avatarUrl: true, isDeleted: true } },
         attachments: true,
+        reactions: reactionInclude,
       },
     });
-
     const signedParent = {
       ...parentMessage,
       attachments: await signAttachments(parentMessage.attachments),
     };
-    const signedReplies = await signMessageAttachments(replies);
 
-    res
-      .status(200)
-      .json({ parentMessage: signedParent, replies: signedReplies });
+    res.status(200).json({
+      parentMessage: signedParent,
+      replies: await signMessageAttachments(replies),
+    });
   } catch (error) {
     console.error("❌ [BACKEND] Fetching Thread Failed:", error);
     res.status(500).json({ error: "Internal Server Error" });
