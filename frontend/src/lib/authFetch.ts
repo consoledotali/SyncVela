@@ -1,12 +1,29 @@
 import axios, { AxiosRequestConfig } from "axios";
-import { useAuthStore } from "@/src/store/authStore";
+import { useAuthStore, type User } from "@/src/store/authStore";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000";
 
 // De-duplicate concurrent refreshes: agar ek waqt mein kai requests 401 khaayen,
 // sab isi single refresh promise ka intezaar karein — warna refresh token race
 // ho kar rotate/invalidate ho sakta hai.
-let refreshPromise: Promise<string | null> | null = null;
+type RefreshSession = { accessToken: string; user: User };
+let refreshPromise: Promise<RefreshSession | null> | null = null;
+
+const isAccessTokenExpiringSoon = (token: string) => {
+  try {
+    const payload = token.split(".")[1];
+    if (!payload) return true;
+    const normalizedPayload = payload.replace(/-/g, "+").replace(/_/g, "/");
+    const paddedPayload = normalizedPayload.padEnd(
+      Math.ceil(normalizedPayload.length / 4) * 4,
+      "=",
+    );
+    const claims = JSON.parse(atob(paddedPayload)) as { exp?: number };
+    return !claims.exp || claims.exp * 1000 <= Date.now() + 30_000;
+  } catch {
+    return true;
+  }
+};
 
 // Wrap an axios result in a Web API Response so every existing caller
 // (res.ok, res.status, res.json()) keeps working without any change.
@@ -16,7 +33,7 @@ const toFetchResponse = (status: number, data: unknown): Response =>
     headers: { "Content-Type": "application/json" },
   });
 
-const refreshAccessToken = async (): Promise<string | null> => {
+export const refreshAccessToken = async (): Promise<RefreshSession | null> => {
   if (!refreshPromise) {
     refreshPromise = (async () => {
       try {
@@ -26,10 +43,11 @@ const refreshAccessToken = async (): Promise<string | null> => {
           { withCredentials: true, validateStatus: () => true },
         );
         if (res.status !== 200) return null;
-        const newToken = res.data?.accessToken as string | undefined;
-        if (newToken) {
-          useAuthStore.setState({ token: newToken });
-          return newToken;
+        const accessToken = res.data?.accessToken as string | undefined;
+        const user = res.data?.user as User | undefined;
+        if (accessToken && user) {
+          useAuthStore.getState().restoreSession(user, accessToken);
+          return { accessToken, user };
         }
         return null;
       } catch {
@@ -83,18 +101,30 @@ export const authFetch = async (
   input: string,
   init?: RequestInit,
 ): Promise<Response> => {
-  const token = useAuthStore.getState().token;
+  let token = useAuthStore.getState().token;
+
+  // Refresh before a token is missing or about to expire. This prevents an
+  // expected 401 from ever reaching the network panel during normal use.
+  if (!token || isAccessTokenExpiringSoon(token)) {
+    const refreshedSession = await refreshAccessToken();
+    if (!refreshedSession) {
+      if (!token) useAuthStore.getState().logout();
+      return toFetchResponse(401, { error: "Your session has expired." });
+    }
+    token = refreshedSession.accessToken;
+  }
+
   let res = await axios(toAxiosConfig(input, init, token));
 
   if (res.status !== 401) return toFetchResponse(res.status, res.data);
 
   // 401 → try a single silent refresh + retry.
-  const newToken = await refreshAccessToken();
-  if (!newToken) {
+  const refreshedSession = await refreshAccessToken();
+  if (!refreshedSession) {
     useAuthStore.getState().logout();
     return toFetchResponse(res.status, res.data);
   }
 
-  res = await axios(toAxiosConfig(input, init, newToken));
+  res = await axios(toAxiosConfig(input, init, refreshedSession.accessToken));
   return toFetchResponse(res.status, res.data);
 };

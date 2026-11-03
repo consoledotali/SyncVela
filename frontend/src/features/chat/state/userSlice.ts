@@ -10,6 +10,17 @@ export const createUserSlice: StateCreator<ChatStore, [], [], UserSlice> = (
   channelUnreadCounts: {},
 
   setUsers: (users) => set({ users }),
+  removeUser: (userId) =>
+    set((state) => {
+      const users = state.users.filter((user) => user.id !== userId);
+      const unreadCounts = { ...state.unreadCounts };
+      delete unreadCounts[userId];
+      return {
+        users,
+        unreadCounts,
+        onlineUsers: state.onlineUsers.filter((id) => id !== userId),
+      };
+    }),
   setOnlineUsers: (userIds) => set({ onlineUsers: userIds }),
 
   // 🟢 THE BULLETPROOF FIX: Jab badge barhay ga, time bhi automatically update hoga!

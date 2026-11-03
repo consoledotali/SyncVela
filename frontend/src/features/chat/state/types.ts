@@ -8,6 +8,11 @@ export interface Attachment {
   size: number;
 }
 
+export interface MessageReaction {
+  emoji: string;
+  userId: string;
+}
+
 export interface Workspace {
   id: string;
   name: string;
@@ -20,6 +25,7 @@ export interface Channel {
   name: string;
   type: "PUBLIC" | "PRIVATE";
   workspaceId: string;
+  ownerId: string;
   lastMessageAt?: string;
 }
 
@@ -32,9 +38,10 @@ export interface Message {
   tempId?: string;
   attachmentUrl?: string | null;
   attachments?: Attachment[];
-  sender?: { id: string; name: string; avatarUrl?: string | null };
+  sender?: { id: string; name: string; avatarUrl?: string | null; isDeleted?: boolean };
   parentMessageId?: string | null;
   _count?: { replies: number };
+  reactions?: MessageReaction[];
 }
 
 export interface SidebarUser {
@@ -42,8 +49,12 @@ export interface SidebarUser {
   name: string;
   email: string;
   avatarUrl?: string | null;
+  isDeleted?: boolean;
   lastMessageAt?: string;
+  unreadCount?: number;
 }
+
+export type WorkspaceRole = "OWNER" | "ADMIN" | "MEMBER" | "GUEST";
 
 export interface PendingMessage {
   roomId: string;
@@ -56,12 +67,12 @@ export interface WorkspaceSlice {
   channels: Channel[];
   activeWorkspaceId: string | null;
   activeChannelId: string | null;
-  currentUserRole: "OWNER" | "ADMIN" | "MEMBER" | "GUEST" | null;
+  currentUserRole: WorkspaceRole | null;
   setWorkspaces: (workspaces: Workspace[]) => void;
   setChannels: (channels: Channel[]) => void;
   setActiveWorkspaceId: (id: string | null) => void;
   setActiveChannelId: (id: string | null) => void;
-  setCurrentUserRole: (role: any) => void;
+  setCurrentUserRole: (role: WorkspaceRole | null) => void;
   updateChannelActivity: (channelId: string, timestamp: string) => void;
 }
 
@@ -69,7 +80,7 @@ export interface ChatUISlice {
   selectedUser: SidebarUser | null;
   activeRoomId: string | null;
   isLoading: boolean;
-  typingUsers: string[];
+  typingParticipants: Record<string, Record<string, number>>;
   targetLastReadAt: string | null;
 
   activeThreadParent: Message | null;
@@ -82,8 +93,13 @@ export interface ChatUISlice {
   setSelectedUser: (user: SidebarUser | null) => void;
   setActiveRoomId: (id: string | null) => void;
   setLoading: (status: boolean) => void;
-  addTypingUser: (userId: string) => void;
-  removeTypingUser: (userId: string) => void;
+  setTypingParticipant: (
+    conversationKey: string,
+    userId: string,
+    expiresAt: number,
+  ) => void;
+  removeTypingParticipant: (conversationKey: string, userId: string) => void;
+  clearTypingConversation: (conversationKey: string) => void;
   setTargetLastReadAt: (time: string | null) => void;
   resetChat: () => void;
 
@@ -104,6 +120,7 @@ export interface UserSlice {
   unreadCounts: Record<string, number>;
   channelUnreadCounts: Record<string, number>;
   setUsers: (users: SidebarUser[]) => void;
+  removeUser: (userId: string) => void;
   setOnlineUsers: (userIds: string[]) => void;
   incrementUnread: (userId: string) => void;
   clearUnread: (userId: string) => void;
@@ -139,7 +156,9 @@ export interface MessageSlice {
   ) => void;
   updateRealMessageId: (tempId: string, realId: string) => void;
   deleteMessage: (messageId: string, parentMessageId?: string | null) => void;
+  setThreadReplyCount: (parentMessageId: string, replyCount: number) => void;
   editMessage: (messageId: string, newText: string) => void;
+  updateMessageReactions: (messageId: string, reactions: MessageReaction[]) => void;
 }
 
 export type ChatStore = WorkspaceSlice & ChatUISlice & UserSlice & MessageSlice;

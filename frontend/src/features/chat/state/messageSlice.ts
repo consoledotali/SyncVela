@@ -1,34 +1,59 @@
 import { StateCreator } from "zustand";
-import { ChatStore, MessageSlice } from "./types";
+import { ChatStore, Message, MessageSlice } from "./types";
 
 export const createMessageSlice: StateCreator<
   ChatStore,
   [],
   [],
   MessageSlice
-> = (set, get) => ({
+> = (set) => ({
   messages: [],
   hasMore: false,
   nextCursor: null,
   isLoadingMore: false,
   pendingQueue: [],
 
-  // 🚀 THE BULLETPROOF FIX: Deduplication on Add
+  // Reconcile the optimistic row with the authoritative Socket.IO row.
+  // This is essential for messages that contain attachments: the optimistic
+  // row has blob-preview URLs while the server row has signed object URLs.
   addMessage: (message) =>
     set((state) => {
-      // Check if message already exists via real ID or temp ID
-      const isDuplicate = state.messages.some(
-        (m) =>
-          m.id === message.id ||
-          (message.tempId && m.tempId === message.tempId) ||
-          (m.tempId && m.tempId === message.id),
+      const existingIndex = state.messages.findIndex(
+        (current) =>
+          current.id === message.id ||
+          (message.tempId &&
+            (current.tempId === message.tempId || current.id === message.tempId)) ||
+          (current.tempId && current.tempId === message.id),
       );
 
-      if (isDuplicate) {
-        return state; // Reject duplicate silently
+      if (existingIndex < 0) {
+        return { messages: [...state.messages, message] };
       }
 
-      return { messages: [...state.messages, message] };
+      const existing = state.messages[existingIndex];
+      const reconciled = {
+        ...existing,
+        ...message,
+        id: message.id || existing.id,
+        tempId: message.tempId || existing.tempId,
+        status: message.status || "sent",
+        attachments:
+          message.attachments && message.attachments.length > 0
+            ? message.attachments
+            : existing.attachments,
+      };
+      const messages = [...state.messages];
+      messages[existingIndex] = reconciled;
+
+      return {
+        messages,
+        pendingQueue: state.pendingQueue.filter(
+          (pending) =>
+            pending.message.id !== existing.id &&
+            pending.message.id !== message.id &&
+            (!message.tempId || pending.message.tempId !== message.tempId),
+        ),
+      };
     }),
 
   // 🚀 THE BULLETPROOF FIX: Deduplication on Initial Load
@@ -117,6 +142,25 @@ export const createMessageSlice: StateCreator<
 
       // 🚀 THE FIX: Kya delete honay wala message wahi Root Parent hai jis par Drawer khula hua hai?
       const isDeletingActiveThread = state.activeThreadParent?.id === messageId;
+      const shouldDecrementActiveThread = Boolean(
+        state.activeThreadParent &&
+          parentId &&
+          state.activeThreadParent.id === parentId,
+      );
+      const updatedActiveThreadParent =
+        isDeletingActiveThread
+          ? null
+          : shouldDecrementActiveThread && state.activeThreadParent
+            ? {
+                ...state.activeThreadParent,
+                _count: {
+                  replies: Math.max(
+                    0,
+                    (state.activeThreadParent._count?.replies || 0) - 1,
+                  ),
+                },
+              }
+            : state.activeThreadParent;
 
       return {
         // 2. Message array se udao, aur agar yeh reply tha toh PARENT ka counter -1 karo
@@ -140,20 +184,26 @@ export const createMessageSlice: StateCreator<
           : state.threadMessages.filter((msg) => msg.id !== messageId),
 
         // 4. Thread Drawer Anchor Update
-        activeThreadParent: isDeletingActiveThread
-          ? null // 🚀 THE FIX: Root message gaya toh Drawer instantly auto-close!
-          : state.activeThreadParent &&
-              parentId &&
-              state.activeThreadParent.id === parentId
-            ? ({
-                ...state.activeThreadParent,
-                _count: {
-                  replies: Math.max(
-                    0,
-                    (state.activeThreadParent._count?.replies || 0) - 1,
-                  ),
-                },
-              } as any)
+        activeThreadParent: updatedActiveThreadParent,
+      };
+    }),
+
+  setThreadReplyCount: (parentMessageId: string, replyCount: number) =>
+    set((state) => {
+      const normalizedReplyCount = Math.max(0, replyCount);
+      const updateParent = (message: Message): Message =>
+        message.id === parentMessageId
+          ? {
+              ...message,
+              _count: { replies: normalizedReplyCount },
+            }
+          : message;
+
+      return {
+        messages: state.messages.map(updateParent),
+        activeThreadParent:
+          state.activeThreadParent?.id === parentMessageId
+            ? updateParent(state.activeThreadParent)
             : state.activeThreadParent,
       };
     }),
@@ -167,4 +217,18 @@ export const createMessageSlice: StateCreator<
         msg.id === messageId ? { ...msg, text: newText } : msg,
       ),
     })),
+
+  updateMessageReactions: (messageId, reactions) =>
+    set((state) => {
+      const update = (message: Message): Message =>
+        message.id === messageId ? { ...message, reactions } : message;
+      return {
+        messages: state.messages.map(update),
+        threadMessages: state.threadMessages.map(update),
+        activeThreadParent:
+          state.activeThreadParent?.id === messageId
+            ? update(state.activeThreadParent)
+            : state.activeThreadParent,
+      };
+    }),
 });

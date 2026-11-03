@@ -1,8 +1,9 @@
 import { useEffect } from "react";
 import { useRouter } from "next/navigation";
-import { useChatStore } from "@/src/store/chat";
+import { useChatStore } from "@/src/features/chat/state";
 import { useAuthStore } from "@/src/store/authStore";
 import { authFetch } from "@/src/lib/authFetch";
+import type { Workspace } from "@/src/features/chat/state/types";
 
 export const useWorkspaceInit = () => {
   const { token, isAuthenticated } = useAuthStore();
@@ -21,7 +22,7 @@ export const useWorkspaceInit = () => {
         const response = await authFetch(`${process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000"}/api/workspaces`);
 
         if (response.ok) {
-          const data = await response.json();
+          const data = (await response.json()) as Workspace[];
 
           // 🚀 THE ONBOARDING REDIRECT (Strict Lock)
           // Agar user ke paas 0 workspaces hain, toh seedha form par bhejo
@@ -41,7 +42,7 @@ export const useWorkspaceInit = () => {
             // 🛡️ SECURITY CHECK: Kya wo workspace abhi bhi data mein exist karti hai?
             // (Kahin user us se remove toh nahi ho gaya?)
             const isValidWorkspace = data.some(
-              (w: any) => w.id === savedWorkspaceId,
+              (workspace) => workspace.id === savedWorkspaceId,
             );
 
             if (isValidWorkspace && savedWorkspaceId) {

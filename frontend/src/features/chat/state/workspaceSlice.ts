@@ -29,6 +29,10 @@ export const createWorkspaceSlice: StateCreator<
             currentUserRole: null,
             activeThreadParent: null, // 🚀 THE STICKY DRAWER FIX (Workspace Switch)
             threadMessages: [],
+            selectedUser: null,
+            activeRoomId: null,
+            activeChannelId: null,
+            messages: [],
           },
     ),
 

@@ -1,5 +1,4 @@
 import { create } from "zustand";
-import { persist } from "zustand/middleware";
 
 // 1. Strict Types
 export interface User {
@@ -15,28 +14,27 @@ interface AuthState {
   user: User | null;
   token: string | null;
   isAuthenticated: boolean;
+  isSessionReady: boolean;
 
   // Actions
   login: (user: User, token: string) => void;
+  restoreSession: (user: User, token: string) => void;
+  completeSessionBootstrap: () => void;
   logout: () => void;
 }
 
-// 2. The Persistent Store Engine
-export const useAuthStore = create<AuthState>()(
-  persist(
-    (set) => ({
-      user: null,
-      token: null,
-      isAuthenticated: false,
-
-      // Login hone par state update aur token save hoga
-      login: (user, token) => set({ user, token, isAuthenticated: true }),
-
-      // Logout par sab kuch wipe ho jayega
-      logout: () => set({ user: null, token: null, isAuthenticated: false }),
-    }),
-    {
-      name: "syncvela-auth",
-    },
-  ),
-);
+// Access tokens deliberately remain in memory. The refresh session is held in
+// an HttpOnly cookie and the application refreshes after reload rather than
+// persisting credentials in browser storage.
+export const useAuthStore = create<AuthState>()((set) => ({
+  user: null,
+  token: null,
+  isAuthenticated: false,
+  isSessionReady: false,
+  login: (user, token) => set({ user, token, isAuthenticated: true, isSessionReady: true }),
+  restoreSession: (user, token) =>
+    set({ user, token, isAuthenticated: true, isSessionReady: true }),
+  completeSessionBootstrap: () => set({ isSessionReady: true }),
+  logout: () =>
+    set({ user: null, token: null, isAuthenticated: false, isSessionReady: true }),
+}));
