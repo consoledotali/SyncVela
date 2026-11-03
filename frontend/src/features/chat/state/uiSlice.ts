@@ -7,7 +7,7 @@ export const createChatUISlice: StateCreator<ChatStore, [], [], ChatUISlice> = (
   selectedUser: null,
   activeRoomId: null,
   isLoading: false,
-  typingUsers: [],
+  typingParticipants: {},
   targetLastReadAt: null,
 
   activeThreadParent: null,
@@ -33,16 +33,33 @@ export const createChatUISlice: StateCreator<ChatStore, [], [], ChatUISlice> = (
     })),
   setActiveRoomId: (id) => set({ activeRoomId: id }),
   setLoading: (status) => set({ isLoading: status }),
-  addTypingUser: (userId) =>
+  setTypingParticipant: (conversationKey, userId, expiresAt) =>
     set((state) => ({
-      typingUsers: state.typingUsers.includes(userId)
-        ? state.typingUsers
-        : [...state.typingUsers, userId],
+      typingParticipants: {
+        ...state.typingParticipants,
+        [conversationKey]: {
+          ...state.typingParticipants[conversationKey],
+          [userId]: expiresAt,
+        },
+      },
     })),
-  removeTypingUser: (userId) =>
-    set((state) => ({
-      typingUsers: state.typingUsers.filter((id) => id !== userId),
-    })),
+  removeTypingParticipant: (conversationKey, userId) =>
+    set((state) => {
+      const participants = { ...state.typingParticipants[conversationKey] };
+      delete participants[userId];
+      return {
+        typingParticipants: {
+          ...state.typingParticipants,
+          [conversationKey]: participants,
+        },
+      };
+    }),
+  clearTypingConversation: (conversationKey) =>
+    set((state) => {
+      const typingParticipants = { ...state.typingParticipants };
+      delete typingParticipants[conversationKey];
+      return { typingParticipants };
+    }),
   setTargetLastReadAt: (time) => set({ targetLastReadAt: time }),
 
   openThread: (parent) =>
@@ -82,6 +99,7 @@ export const createChatUISlice: StateCreator<ChatStore, [], [], ChatUISlice> = (
       hasMore: false,
       nextCursor: null,
       isLoadingMore: false,
+      typingParticipants: {},
       targetLastReadAt: null,
       activeThreadParent: null,
       threadMessages: [],

@@ -2,10 +2,11 @@
 
 import React, { createContext, useContext, useEffect, useState } from "react";
 import { io, Socket } from "socket.io-client";
+import { useQueryClient } from "@tanstack/react-query";
 import { useRouter } from "next/navigation";
-import axios from "axios";
 import { useAuthStore } from "@/src/store/authStore";
-import { useChatStore } from "@/src/store/chat";
+import { refreshAccessToken } from "@/src/lib/authFetch";
+import { useChatStore } from "@/src/features/chat/state";
 
 interface SocketContextType {
   socket: Socket | null;
@@ -21,6 +22,7 @@ export const useSocket = () => useContext(SocketContext);
 
 export const SocketProvider = ({ children }: { children: React.ReactNode }) => {
   const router = useRouter();
+  const queryClient = useQueryClient();
   const [socket, setSocket] = useState<Socket | null>(null);
   const [isConnected, setIsConnected] = useState(false);
 
@@ -28,12 +30,15 @@ export const SocketProvider = ({ children }: { children: React.ReactNode }) => {
 
   useEffect(() => {
     if (!isAuthenticated || !token) {
-      if (socket) {
-        socket.disconnect();
-        setSocket(null);
+      const cleanupTask = window.setTimeout(() => {
+        setSocket((currentSocket) => {
+          currentSocket?.disconnect();
+          return null;
+        });
         setIsConnected(false);
-      }
-      return;
+      }, 0);
+
+      return () => window.clearTimeout(cleanupTask);
     }
 
     const socketInstance = io(
@@ -45,17 +50,14 @@ export const SocketProvider = ({ children }: { children: React.ReactNode }) => {
 
     // 🟢 CONNECTION & FLUSH ENGINE
     socketInstance.on("connect", () => {
-      console.log("🟢 Frontend Connected to WebSocket Engine");
       setIsConnected(true);
+      socketInstance.emit("presence:heartbeat");
 
       setTimeout(() => {
         const { pendingQueue, removePendingMessage, updateMessageStatus } =
           useChatStore.getState();
 
         if (pendingQueue.length > 0) {
-          console.log(
-            `🔄 Flushing ${pendingQueue.length} pending messages to server...`,
-          );
           pendingQueue.forEach((pendingItem) => {
             socketInstance.emit("sendPrivateMessage", {
               roomId: pendingItem.roomId,
@@ -72,8 +74,6 @@ export const SocketProvider = ({ children }: { children: React.ReactNode }) => {
 
     // 🟡 SILENT TOKEN REFRESH INTERCEPTOR
     socketInstance.on("connect_error", async (err) => {
-      console.log("🔴 EXACT SOCKET ERROR:", err.message);
-
       const errorMessage = err.message.toLowerCase();
 
       if (
@@ -82,26 +82,13 @@ export const SocketProvider = ({ children }: { children: React.ReactNode }) => {
         errorMessage.includes("authentication") ||
         errorMessage.includes("token")
       ) {
-        console.warn("⚠️ Access token expired. Attempting silent refresh...");
-
         try {
-          const res = await axios.post(
-            `${process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000"}/api/auth/refresh`,
-            {},
-            { withCredentials: true, validateStatus: () => true },
-          );
+          const session = await refreshAccessToken();
+          if (!session) throw new Error("Refresh API rejected the request");
 
-          if (res.status < 200 || res.status >= 300)
-            throw new Error("Refresh API rejected the request");
-
-          const data = res.data;
-          console.log("✅ Token silently refreshed! Injecting hot-swap...");
-
-          socketInstance.auth = { token: data.accessToken };
-          useAuthStore.setState({ token: data.accessToken });
+          socketInstance.auth = { token: session.accessToken };
           socketInstance.connect();
-        } catch (error) {
-          console.error("❌ Refresh token strictly failed. Wiping state.");
+        } catch {
           useAuthStore.getState().logout();
           router.push("/auth/login");
         }
@@ -109,20 +96,38 @@ export const SocketProvider = ({ children }: { children: React.ReactNode }) => {
     });
 
     socketInstance.on("disconnect", () => {
-      console.log("🔴 Frontend Disconnected");
       setIsConnected(false);
     });
 
-    setSocket(socketInstance);
+    const presenceHeartbeat = () => socketInstance.emit("presence:heartbeat");
+    const heartbeatInterval = window.setInterval(presenceHeartbeat, 30_000);
+
+    // Socket messages carry domain notifications, not a second source of truth.
+    // TanStack Query refetches authoritative server data after a relevant event.
+    const invalidateWorkspace = () => {
+      void queryClient.invalidateQueries({ queryKey: ["workspaces"] });
+      void queryClient.invalidateQueries({ queryKey: ["channels"] });
+    };
+    socketInstance.on("channel_created", invalidateWorkspace);
+    socketInstance.on("added_to_channel", invalidateWorkspace);
+
+        const socketStateTask = window.setTimeout(() => {
+      setSocket(socketInstance);
+    }, 0);
 
     // 🚀 CLEARED DEAD & REDUNDANT EVENT LISTENERS
     return () => {
+      window.clearTimeout(socketStateTask);
+
       socketInstance.off("connect");
       socketInstance.off("connect_error");
       socketInstance.off("disconnect");
+      socketInstance.off("channel_created", invalidateWorkspace);
+      socketInstance.off("added_to_channel", invalidateWorkspace);
+      window.clearInterval(heartbeatInterval);
       socketInstance.disconnect();
     };
-  }, [isAuthenticated, router, token]);
+  }, [isAuthenticated, queryClient, router, token]);
 
   return (
     <SocketContext.Provider value={{ socket, isConnected }}>

@@ -1,4 +1,4 @@
-import { useChatStore } from "@/src/store/chat";
+import { useChatStore } from "@/src/features/chat/state";
 
 // 🚀 FRONTEND SHADOW MATRIX (Must exactly match Backend rbac.ts)
 export type Permission =
@@ -23,7 +23,6 @@ const ROLE_PERMISSIONS: Record<string, Permission[]> = {
   ADMIN: [
     "VIEW_WORKSPACE",
     "CREATE_CHANNEL",
-    "DELETE_CHANNEL",
     "INVITE_USERS",
     "MANAGE_MESSAGES",
   ],

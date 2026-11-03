@@ -22,4 +22,10 @@ export const useChatStore = create<ChatStore>()(
 );
 
 // 🛡️ RE-EXPORT TYPES FOR EASY IMPORT ANYWHERE IN APP
-export type { Workspace, Channel, Message, SidebarUser } from "./types";
+export type {
+  Workspace,
+  Channel,
+  Message,
+  SidebarUser,
+  WorkspaceRole,
+} from "./types";
