@@ -1,9 +1,8 @@
 "use client";
 
 import React, { useState } from "react";
-import { useChatStore } from "@/src/store/chat";
-import { useAuthStore } from "@/src/store/authStore";
-import { usePermissions } from "@/src/hooks/usePermissions";
+import { useChatStore } from "@/src/features/chat/state";
+import { usePermissions } from "@/src/features/chat/runtime/workspace/usePermissions";
 import {
   MessageSquare,
   ChevronDown,
@@ -15,7 +14,10 @@ import {
 } from "lucide-react";
 import WorkspaceInviteModal from "./WorkspaceInviteModal";
 import ManageMembersModal from "./ManageMembersModal";
+import DeleteWorkspaceDialog from "./DeleteWorkspaceDialog";
+
 import { authFetch } from "@/src/lib/authFetch";
+import { toast } from "sonner";
 
 interface WorkspaceDropdownProps {
   onOpenCreateModal: () => void;
@@ -28,8 +30,8 @@ export default function WorkspaceDropdown({
   const [isInviteModalOpen, setIsInviteModalOpen] = useState(false);
   const [isManageModalOpen, setIsManageModalOpen] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
+  const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
 
-  const { token } = useAuthStore();
   const {
     workspaces,
     activeWorkspaceId,
@@ -46,14 +48,17 @@ export default function WorkspaceDropdown({
   const canDelete = hasPermission("DELETE_WORKSPACE");
   const canManageWorkspace = hasPermission("MANAGE_WORKSPACE");
 
+    const requestDeleteWorkspace = () => {
+    if (!activeWorkspaceId || !activeWorkspace) return;
+    setIsOpen(false);
+    setIsDeleteDialogOpen(true);
+  };
+
   const handleDeleteWorkspace = async () => {
     if (!activeWorkspaceId) return;
-    const confirmDelete = window.confirm(
-      `Are you absolutely sure you want to delete "${activeWorkspace?.name}"?\nThis action cannot be undone.`,
-    );
-    if (!confirmDelete) return;
 
     setIsDeleting(true);
+
     try {
       const response = await authFetch(
         `${process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000"}/api/workspaces/${activeWorkspaceId}`,
@@ -90,11 +95,12 @@ export default function WorkspaceDropdown({
           onOpenCreateModal();
         }
       } else {
-        const data = await response.json();
-        alert(`❌ Deletion Failed: ${data.error}`);
+        const data: { error?: string } = await response.json();
+        toast.error(data.error ?? "Unable to delete the workspace");
       }
-    } catch (error) {
-      alert("❌ Critical Error: Failed to delete workspace.");
+        } catch {
+      toast.error("Failed to delete workspace. Please try again.");
+
     } finally {
       setIsDeleting(false);
     }
@@ -123,7 +129,8 @@ export default function WorkspaceDropdown({
           />
         </div>
 
-        {isOpen && (
+                {isOpen && (
+
           <>
             <div
               className="fixed inset-0 z-30"
@@ -184,7 +191,8 @@ export default function WorkspaceDropdown({
 
               {canDelete && (
                 <div
-                  onClick={handleDeleteWorkspace}
+                                    onClick={requestDeleteWorkspace}
+
                   className="px-3 py-2 text-sm cursor-pointer hover:bg-red-50 text-red-600 font-medium flex items-center gap-2"
                 >
                   {isDeleting ? (
@@ -215,14 +223,28 @@ export default function WorkspaceDropdown({
           isOpen={isInviteModalOpen}
           onClose={() => setIsInviteModalOpen(false)}
           workspaceName={activeWorkspace.name}
-          inviteCode={(activeWorkspace as any).inviteCode || ""}
+          inviteCode={activeWorkspace.inviteCode ?? ""}
         />
       )}
 
-      <ManageMembersModal
+            <ManageMembersModal
         isOpen={isManageModalOpen}
         onClose={() => setIsManageModalOpen(false)}
       />
+
+      <DeleteWorkspaceDialog
+        isOpen={isDeleteDialogOpen}
+        workspaceName={activeWorkspace?.name ?? "this workspace"}
+        isDeleting={isDeleting}
+        onCancel={() => {
+          if (!isDeleting) setIsDeleteDialogOpen(false);
+        }}
+        onConfirm={async () => {
+          await handleDeleteWorkspace();
+          setIsDeleteDialogOpen(false);
+        }}
+      />
+
     </>
   );
 }

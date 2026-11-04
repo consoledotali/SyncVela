@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
+import React, { useState, useSyncExternalStore } from "react";
 import { X, Link as LinkIcon, Copy, Check } from "lucide-react";
 
 interface WorkspaceInviteModalProps {
@@ -17,14 +17,15 @@ export default function WorkspaceInviteModal({
   inviteCode,
 }: WorkspaceInviteModalProps) {
   const [copied, setCopied] = useState(false);
-  const [inviteUrl, setInviteUrl] = useState("");
-
-  // 🛡️ Ensure window is defined (Next.js SSR fix)
-  useEffect(() => {
-    if (typeof window !== "undefined") {
-      setInviteUrl(`${window.location.origin}/invite/${inviteCode}`);
-    }
-  }, [inviteCode]);
+  const origin = useSyncExternalStore(
+    () => () => undefined,
+    () => window.location.origin,
+    () => "",
+  );
+  const inviteUrl = origin ? `${origin}/invite/${inviteCode}` : "";
+  const inviteLinkPreview = origin
+    ? `${new URL(origin).host}/invite/••••••${inviteCode.slice(-6)}`
+    : "Preparing secure link…";
 
   if (!isOpen) return null;
 
@@ -65,12 +66,9 @@ export default function WorkspaceInviteModal({
 
         {/* Link Copy Section */}
         <div className="flex items-center gap-2 mt-4">
-          <input
-            type="text"
-            readOnly
-            value={inviteUrl}
-            className="flex-1 bg-muted/50 border border-border rounded-lg px-3 py-2.5 text-sm text-foreground focus:outline-none"
-          />
+          <div className="min-w-0 flex-1 rounded-lg border border-border bg-muted/50 px-3 py-2.5 text-sm text-muted-foreground" aria-label="Secure workspace invite link">
+            <span className="block truncate">{inviteLinkPreview}</span>
+          </div>
           <button
             onClick={handleCopy}
             className={`flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg font-semibold transition-all min-w-[100px] ${

@@ -1,5 +1,6 @@
 "use client";
 
+import Image from "next/image";
 import React, { useEffect, useState, useCallback } from "react";
 import { X, Download, ChevronLeft, ChevronRight } from "lucide-react";
 import { getFileDetails } from "./utils";
@@ -122,11 +123,14 @@ export const Lightbox = ({ items, startIndex = 0, onClose }: LightboxProps) => {
           )}
 
           {kind === "image" && (
-            <img
+            <Image
               key={current.url}
               src={current.url}
               alt={current.fileName || "Image"}
-              className="max-w-full max-h-full object-contain rounded-lg shadow-2xl animate-in zoom-in-95 duration-150"
+              fill
+              unoptimized
+              sizes="(max-width: 768px) 100vw, 90vw"
+              className="object-contain p-4 rounded-lg shadow-2xl animate-in zoom-in-95 duration-150"
             />
           )}
           {kind === "video" && (
@@ -196,11 +200,13 @@ export const Lightbox = ({ items, startIndex = 0, onClose }: LightboxProps) => {
                   title={item.fileName}
                 >
                   {thumbKind === "image" ? (
-                    <img
+                    <Image
                       src={item.url}
                       alt={item.fileName || "thumb"}
-                      className="w-full h-full object-cover"
-                      loading="lazy"
+                      fill
+                      unoptimized
+                      sizes="64px"
+                      className="object-cover"
                     />
                   ) : thumbKind === "video" ? (
                     <video

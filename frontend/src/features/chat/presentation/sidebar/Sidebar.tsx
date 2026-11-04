@@ -1,16 +1,16 @@
 "use client";
 
 import React, { useState } from "react";
-import { useChatStore } from "@/src/store/chat";
+import { useChatStore } from "@/src/features/chat/state";
 
-import WorkspaceDropdown from "./WorkspaceDropdown";
-import ChannelList from "./ChannelList";
-import DirectMessageList from "./DirectMessageList";
+import WorkspaceDropdown from "../workspace/WorkspaceDropdown";
+import ChannelList from "../channels/ChannelList";
+import DirectMessageList from "../direct-messages/DirectMessageList";
 import CurrentUserFooter from "./CurrentUserFooter";
 
 // Modals imported from the parent directory
-import NewChannelModal from "../NewChannelModal";
-import CreateWorkspaceModal from "../CreateWorkspaceModal";
+import NewChannelModal from "../channels/NewChannelModal";
+import CreateWorkspaceModal from "../workspace/CreateWorkspaceModal";
 
 export default function Sidebar() {
   const [isChannelModalOpen, setIsChannelModalOpen] = useState(false);
@@ -20,7 +20,7 @@ export default function Sidebar() {
 
   return (
     <div
-      className={`bg-[#f8f9fa] border-r border-border flex-col h-[100dvh] w-full md:w-[280px] flex-shrink-0 transition-all ${
+      className={`bg-sidebar text-sidebar-foreground border-r border-sidebar-border flex-col h-[100dvh] w-full md:w-[280px] flex-shrink-0 transition-colors ${
         selectedUser || activeChannelId ? "hidden md:flex" : "flex"
       }`}
     >
