@@ -1,10 +1,10 @@
 import React from "react";
-import { useChatStore, Channel } from "@/src/store/chat";
+import { useChatStore, Channel } from "@/src/features/chat/state";
 import { useAuthStore } from "@/src/store/authStore";
 import { useSocket } from "@/src/providers/SocketProvider";
 import { Hash, Lock, Plus } from "lucide-react";
 import { Badge } from "@/src/components/ui/badge";
-import { usePermissions } from "@/src/hooks/usePermissions"; // 🚀 THE RBAC ENGINE IMPORT
+import { usePermissions } from "@/src/features/chat/runtime/workspace/usePermissions";
 import { authFetch } from "@/src/lib/authFetch";
 
 interface ChannelListProps {
@@ -53,18 +53,18 @@ export default function ChannelList({ onOpenModal }: ChannelListProps) {
   };
 
   // 🟢 THE PRODUCTION ENGINE FOR CHANNELS
-  const sortedChannels = [...channels].sort((a: any, b: any) => {
+  const sortedChannels = [...channels].sort((a: Channel, b: Channel) => {
     const timeA = a.lastMessageAt ? new Date(a.lastMessageAt).getTime() : 0;
     const timeB = b.lastMessageAt ? new Date(b.lastMessageAt).getTime() : 0;
 
     const aCount =
       channelUnreadCounts[a.id] !== undefined
         ? channelUnreadCounts[a.id]
-        : a.unreadCount || 0;
+        : 0;
     const bCount =
       channelUnreadCounts[b.id] !== undefined
         ? channelUnreadCounts[b.id]
-        : b.unreadCount || 0;
+        : 0;
 
     if (timeA !== timeB && (timeA > 0 || timeB > 0)) {
       return timeB - timeA;
@@ -101,11 +101,10 @@ export default function ChannelList({ onOpenModal }: ChannelListProps) {
             No channels yet.
           </p>
         ) : (
-          sortedChannels.map((c: any) => {
+          sortedChannels.map((c: Channel) => {
             const isActive = activeChannelId === c.id;
             const storeCount = channelUnreadCounts[c.id];
-            const unreadCount =
-              storeCount !== undefined ? storeCount : c.unreadCount || 0;
+            const unreadCount = storeCount !== undefined ? storeCount : 0;
             const isUnread = unreadCount > 0 && !isActive;
 
             return (

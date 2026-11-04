@@ -1,58 +1,79 @@
 "use client";
 
+import Image from "next/image";
 import React, { useState, useEffect } from "react";
-import { useChatStore } from "@/src/store/chat";
+import { useChatStore } from "@/src/features/chat/state";
 import { useAuthStore } from "@/src/store/authStore";
 import { useSocket } from "@/src/providers/SocketProvider";
 import { X, UserPlus, Loader2, Check } from "lucide-react";
 import { authFetch } from "@/src/lib/authFetch";
+import { toast } from "sonner";
 
 interface InviteModalProps {
   isOpen: boolean;
   onClose: () => void;
 }
 
+interface WorkspaceInviteMember {
+  id: string;
+  name: string;
+  avatarUrl?: string | null;
+}
+
 export default function InviteModal({ isOpen, onClose }: InviteModalProps) {
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [isLoading, setIsLoading] = useState(false);
 
-  const [workspaceMembers, setWorkspaceMembers] = useState<any[]>([]);
+  const [workspaceMembers, setWorkspaceMembers] = useState<
+    WorkspaceInviteMember[]
+  >([]);
+  const [channelMemberIds, setChannelMemberIds] = useState<Set<string>>(new Set());
   const [isFetchingMembers, setIsFetchingMembers] = useState(false);
 
   const { activeChannelId, channels, activeWorkspaceId } = useChatStore();
 
   // 🚀 THE FIX: Get the current logged-in 'user' from authStore
-  const { token, user } = useAuthStore();
+  const { user } = useAuthStore();
   const { socket } = useSocket();
 
   const activeChannel = channels.find((c) => c.id === activeChannelId);
 
   useEffect(() => {
     if (!isOpen || !activeWorkspaceId) {
-      setSelectedIds([]);
       return;
     }
 
     const fetchValidMembers = async () => {
       setIsFetchingMembers(true);
+      setChannelMemberIds(new Set());
       try {
-        const response = await authFetch(
-          `${process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000"}/api/workspaces/${activeWorkspaceId}/members`,
-        );
+        const apiBase = process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000";
+        const [workspaceResponse, channelResponse] = await Promise.all([
+          authFetch(`${apiBase}/api/workspaces/${activeWorkspaceId}/members`),
+          activeChannelId
+            ? authFetch(`${apiBase}/api/channels/${activeChannelId}/members`)
+            : Promise.resolve(null),
+        ]);
 
-        if (response.ok) {
-          const data = await response.json();
+        if (workspaceResponse.ok) {
+          const data: WorkspaceInviteMember[] = await workspaceResponse.json();
           setWorkspaceMembers(data);
         }
-      } catch (error) {
+        if (channelResponse?.ok) {
+          const channelMembers: WorkspaceInviteMember[] = await channelResponse.json();
+          setChannelMemberIds(new Set(channelMembers.map((member) => member.id)));
+        }
+            } catch (error) {
         console.error("Failed to fetch verified workspace members", error);
+        toast.error("Unable to load workspace members. Please try again.");
+
       } finally {
         setIsFetchingMembers(false);
       }
     };
 
     fetchValidMembers();
-  }, [isOpen, activeWorkspaceId]);
+  }, [isOpen, activeWorkspaceId, activeChannelId]);
 
   const toggleUser = (id: string) => {
     setSelectedIds((prev) =>
@@ -81,19 +102,20 @@ export default function InviteModal({ isOpen, onClose }: InviteModalProps) {
       if (response.ok) {
         if (socket && activeChannel) {
           socket.emit("notify_channel_invites", {
-            channel: activeChannel,
-            userIds: selectedIds,
+            channelId: activeChannel.id,
           });
         }
 
         setSelectedIds([]);
         onClose();
       } else {
-        alert(`❌ Error: ${data.error}`);
+                toast.error(data.error || "Failed to send invites.");
+
       }
     } catch (error) {
-      console.error("Invite failed:", error);
-      alert("❌ Critical Error: Failed to send invites.");
+            console.error("Invite failed:", error);
+      toast.error(error instanceof Error ? error.message : "Failed to send invites.");
+
     } finally {
       setIsLoading(false);
     }
@@ -102,7 +124,9 @@ export default function InviteModal({ isOpen, onClose }: InviteModalProps) {
   if (!isOpen || !activeChannelId) return null;
 
   // 🚀 THE ISOLATION FIX: Filter out the current user so they don't see themselves
-  const invitableMembers = workspaceMembers.filter((m) => m.id !== user?.id);
+  const invitableMembers = workspaceMembers.filter(
+    (member) => member.id !== user?.id && !channelMemberIds.has(member.id),
+  );
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm">
@@ -154,10 +178,13 @@ export default function InviteModal({ isOpen, onClose }: InviteModalProps) {
                   <div className="flex items-center gap-3">
                     <div className="h-8 w-8 rounded-full bg-muted flex items-center justify-center font-bold text-xs text-foreground overflow-hidden border border-border shrink-0">
                       {u.avatarUrl ? (
-                        <img
+                        <Image
                           src={u.avatarUrl}
                           alt={u.name}
-                          className="h-full w-full object-cover"
+                          fill
+                          unoptimized
+                          sizes="32px"
+                          className="object-cover"
                         />
                       ) : (
                         u.name.substring(0, 2).toUpperCase()

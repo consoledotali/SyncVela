@@ -4,10 +4,11 @@ import React, { useState } from "react";
 import { X, Loader2, Hash, Lock } from "lucide-react";
 import { Button } from "@/src/components/ui/button";
 import { Input } from "@/src/components/ui/input";
-import { useChatStore } from "@/src/store/chat";
+import { useChatStore } from "@/src/features/chat/state";
 import { useAuthStore } from "@/src/store/authStore";
 import { useSocket } from "@/src/providers/SocketProvider";
 import { authFetch } from "@/src/lib/authFetch";
+import { toast } from "sonner";
 
 interface NewChannelModalProps {
   isOpen: boolean;
@@ -59,10 +60,13 @@ export default function NewChannelModal({
         onClose();
       } else {
         const err = await response.json();
-        alert(err.error || "Failed to create channel");
+                toast.error(err.error || "Failed to create channel");
+
       }
-    } catch (error) {
-      console.error("❌ Channel creation error:", error);
+        } catch (error) {
+      console.error("Channel creation error:", error);
+      toast.error(error instanceof Error ? error.message : "Failed to create channel.");
+
     } finally {
       setIsLoading(false);
     }

@@ -1,13 +1,39 @@
 "use client";
 
 import React, { useEffect, useRef } from "react";
-import { useChatStore } from "@/src/store/chat";
+import { useChatStore, type Message } from "@/src/features/chat/state";
+import {
+  channelMessagePayloadSchema,
+  directMessagePayloadSchema,
+} from "@/src/features/chat/protocol/validation/socketSchemas";
+import { createRoomReceiptPayload } from "@/src/features/chat/protocol/socketPayloads";
 import { useAuthStore } from "@/src/store/authStore";
 import { useSocket } from "@/src/providers/SocketProvider";
 import { X, Loader2, Send } from "lucide-react";
-import MessageBubble from "../MessageBubble";
+import MessageBubble from "../messages/MessageBubble";
 import { v4 as uuidv4 } from "uuid";
 import { authFetch } from "@/src/lib/authFetch";
+
+interface ThreadReplyPayload {
+  id: string;
+  content?: string;
+  senderId: string;
+  createdAt: string;
+  attachments?: Message["attachments"];
+  sender?: Message["sender"];
+  status?: Message["status"];
+  parentMessageId?: string | null;
+}
+
+interface ThreadReplyResponse {
+  replies?: ThreadReplyPayload[];
+}
+
+type OptimisticThreadReply = Message & {
+  channelId: string | null;
+  conversationId: string | null;
+  roomId: string | null;
+};
 
 export default function ThreadDrawer() {
   const { token, user } = useAuthStore();
@@ -23,6 +49,7 @@ export default function ThreadDrawer() {
     setIsFetchingThread,
     addThreadReply,
     activeChannelId,
+    activeWorkspaceId,
   } = useChatStore();
 
   const repliesContainerRef = useRef<HTMLDivElement>(null);
@@ -38,8 +65,8 @@ export default function ThreadDrawer() {
           `${process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000"}/api/messages/thread/${activeThreadParent.id}`,
         );
         if (response.ok) {
-          const data = await response.json();
-          const normalizedReplies = (data.replies || []).map((msg: any) => ({
+          const data: ThreadReplyResponse = await response.json();
+          const normalizedReplies: Message[] = (data.replies ?? []).map((msg) => ({
             id: msg.id,
             text: msg.content || "",
             senderId: msg.senderId,
@@ -56,10 +83,8 @@ export default function ThreadDrawer() {
           // karvata hai, warna DM thread mein blue tick kabhi show nahi hota.
           const s = useChatStore.getState();
           if (s.activeRoomId && s.selectedUser && socket) {
-            socket.emit("markAsRead", {
-              roomId: s.activeRoomId,
-              targetUserId: s.selectedUser.id,
-            });
+            const payload = createRoomReceiptPayload(s.activeRoomId);
+            if (payload) socket.emit("markAsRead", payload);
           }
         } else {
           console.error(
@@ -76,7 +101,7 @@ export default function ThreadDrawer() {
     };
 
     fetchReplies();
-  }, [activeThreadParent, token]);
+  }, [activeThreadParent, setIsFetchingThread, setThreadMessages, socket, token]);
 
   // Auto scroll logic for active reply ingestion
   useEffect(() => {
@@ -102,7 +127,7 @@ export default function ThreadDrawer() {
     const currentRoomId = state.activeRoomId;
     const targetUser = state.selectedUser;
 
-    const payload = {
+    const payload: OptimisticThreadReply = {
       id: tempId,
       tempId,
       text: currentText,
@@ -117,12 +142,12 @@ export default function ThreadDrawer() {
       sender: {
         id: user.id,
         name: user.name,
-        avatarUrl: (user as any).avatarUrl || null,
+        avatarUrl: user.avatarUrl ?? null,
       },
     };
 
     // Optimistic Update
-    addThreadReply(payload as any);
+    addThreadReply(payload);
 
     useChatStore.setState((prev) => {
       if (!prev.activeThreadParent) return prev;
@@ -146,13 +171,16 @@ export default function ThreadDrawer() {
 
     // Smart Socket Emission
     if (!isDM && activeChannelId) {
-      socket.emit("send_channel_message", payload);
+      const validatedPayload = channelMessagePayloadSchema.parse(payload);
+      socket.emit("send_channel_message", validatedPayload);
     } else if (isDM && currentRoomId && targetUser) {
-      socket.emit("sendPrivateMessage", {
+      const validatedPayload = directMessagePayloadSchema.parse({
         ...payload,
         roomId: currentRoomId,
         targetUserId: targetUser.id,
+        workspaceId: activeWorkspaceId || undefined,
       });
+      socket.emit("sendPrivateMessage", validatedPayload);
     }
   };
 

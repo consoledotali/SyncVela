@@ -4,7 +4,7 @@ import React, { useState } from "react";
 import { useRouter } from "next/navigation";
 import axios from "axios";
 import { useAuthStore } from "@/src/store/authStore";
-import { useChatStore } from "@/src/store/chat";
+import { useChatStore } from "@/src/features/chat/state";
 import { useSocket } from "@/src/providers/SocketProvider";
 import {
   Avatar,
@@ -13,14 +13,17 @@ import {
 } from "@/src/components/ui/avatar";
 import { Button } from "@/src/components/ui/button";
 import { LogOut } from "lucide-react";
+import ThemeToggle from "@/src/shared/ui/ThemeToggle";
+
 import {
   Dialog,
   DialogContent,
   DialogHeader,
   DialogTitle,
 } from "@/src/components/ui/dialog";
-import AvatarUploader from "../../profile/AvatarUploader";
-import SetPasswordCard from "../../profile/SetPasswordCard";
+import AvatarUploader from "@/src/features/profile/presentation/AvatarUploader";
+import SetPasswordCard from "@/src/features/profile/presentation/SetPasswordCard";
+import { resolveAvatarUrl } from "@/src/lib/avatarUrl";
 
 export default function CurrentUserFooter() {
   const { user, logout } = useAuthStore();
@@ -60,8 +63,8 @@ export default function CurrentUserFooter() {
             <Avatar className="h-8 w-8 !rounded-md border border-border group-hover:ring-1 ring-primary transition-all">
               <AvatarImage
                 src={
-                  user?.avatarUrl
-                    ? user.avatarUrl
+                  resolveAvatarUrl(user?.avatarUrl)
+                    ? resolveAvatarUrl(user?.avatarUrl)
                     : `https://api.dicebear.com/7.x/initials/svg?seed=${user?.name}`
                 }
                 className="object-cover w-full h-full !rounded-md"
@@ -84,19 +87,25 @@ export default function CurrentUserFooter() {
           </div>
         </div>
 
-        <Button
-          variant="ghost"
-          size="icon"
-          onClick={handleStrictLogout}
+                <div className="flex items-center gap-1 shrink-0">
+          <ThemeToggle />
+          <Button
+            variant="ghost"
+            size="icon"
+            onClick={handleStrictLogout}
+
           className="text-muted-foreground hover:text-destructive hover:bg-destructive/10 shrink-0"
-          title="Logout"
-        >
-          <LogOut className="h-4 w-4" />
-        </Button>
+                      title="Logout"
+            aria-label="Log out"
+          >
+            <LogOut className="h-4 w-4" />
+          </Button>
+        </div>
+
       </div>
 
       <Dialog open={isProfileOpen} onOpenChange={setIsProfileOpen}>
-        <DialogContent className="sm:max-w-[400px] bg-background border border-border rounded-xl shadow-lg">
+        <DialogContent aria-describedby={undefined} className="sm:max-w-[400px] bg-background border border-border rounded-xl shadow-lg">
           <DialogHeader>
             <DialogTitle className="text-lg font-bold text-foreground text-center">
               Profile Settings

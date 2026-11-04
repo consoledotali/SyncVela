@@ -1,12 +1,15 @@
 import React from "react";
-import { useChatStore } from "@/src/store/chat";
+import { useAuthStore } from "@/src/store/authStore";
+import { useChatStore } from "@/src/features/chat/state";
 import { useSocket } from "@/src/providers/SocketProvider";
+import { resolveAvatarUrl } from "@/src/lib/avatarUrl";
 import {
   Avatar,
   AvatarFallback,
   AvatarImage,
 } from "@/src/components/ui/avatar";
 import { Badge } from "@/src/components/ui/badge";
+import type { SidebarUser } from "@/src/features/chat/state/types";
 
 export default function DirectMessageList() {
   const {
@@ -16,18 +19,31 @@ export default function DirectMessageList() {
     onlineUsers,
     unreadCounts,
     clearUnread,
+    activeWorkspaceId,
   } = useChatStore();
+  const currentUserId = useAuthStore((state) => state.user?.id);
   const { socket } = useSocket();
 
-  const handleUserSelect = (targetUser: any) => {
+  const handleUserSelect = (targetUser: SidebarUser) => {
     setSelectedUser(targetUser);
     clearUnread(targetUser.id);
     if (socket) {
-      socket.emit("joinPrivateChat", targetUser.id);
+      socket.emit("joinPrivateChat", {
+        targetUserId: targetUser.id,
+        workspaceId: activeWorkspaceId || undefined,
+      });
     }
   };
 
-  const sortedUsers = [...users].sort((a: any, b: any) => {
+  const onlineUserIds = new Set(onlineUsers.map(String));
+  const uniquePeers = Array.from(
+    new Map(
+      users
+        .filter((user) => String(user.id) !== String(currentUserId ?? ""))
+        .map((user) => [String(user.id), user]),
+    ).values(),
+  );
+  const sortedUsers = [...uniquePeers].sort((a, b) => {
     const timeA = a.lastMessageAt ? new Date(a.lastMessageAt).getTime() : 0;
     const timeB = b.lastMessageAt ? new Date(b.lastMessageAt).getTime() : 0;
 
@@ -65,8 +81,8 @@ export default function DirectMessageList() {
             No team members found.
           </p>
         ) : (
-          sortedUsers.map((u: any) => {
-            const isOnline = onlineUsers.includes(u.id);
+          sortedUsers.map((u) => {
+            const isOnline = onlineUserIds.has(String(u.id));
             const isSelected = selectedUser?.id === u.id;
 
             const count =
@@ -99,8 +115,8 @@ export default function DirectMessageList() {
                     <Avatar className="h-5 w-5 !rounded-md">
                       <AvatarImage
                         src={
-                          u?.avatarUrl
-                            ? u.avatarUrl
+                          resolveAvatarUrl(u?.avatarUrl)
+                            ? resolveAvatarUrl(u?.avatarUrl)
                             : `https://api.dicebear.com/7.x/initials/svg?seed=${u?.name}`
                         }
                         className="object-cover w-full h-full !rounded-md"
@@ -110,8 +126,9 @@ export default function DirectMessageList() {
                       </AvatarFallback>
                     </Avatar>
                     <span
-                      className={`absolute -bottom-0.5 -right-0.5 w-[9px] h-[9px] rounded-full border-[1.5px] border-[#f8f9fa] ${isOnline ? "bg-green-500" : "bg-transparent"}`}
-                    ></span>
+                      aria-label={isOnline ? "Online" : "Offline"}
+                      className={`absolute -bottom-0.5 -right-0.5 h-[9px] w-[9px] rounded-full border-[1.5px] border-[#f8f9fa] ${isOnline ? "bg-emerald-500" : "bg-slate-300"}`}
+                    />
                   </div>
                   <span
                     className={`text-sm truncate ${isUnread ? "font-bold text-foreground" : "hover:text-foreground"}`}

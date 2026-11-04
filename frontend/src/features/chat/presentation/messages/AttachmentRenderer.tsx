@@ -1,3 +1,4 @@
+import Image from "next/image";
 import React from "react";
 import { Download } from "lucide-react";
 import { getFileDetails } from "./utils";
@@ -26,15 +27,13 @@ export const AttachmentRenderer = ({
   const { type: fileType, Icon: FileIcon } = getFileDetails(
     attachment.url,
     attachment.mimeType,
+    attachment.fileName,
   );
   const sizeMB = attachment.size
     ? (attachment.size / 1024 / 1024).toFixed(2)
     : "0.00";
 
-  const isPdf =
-    fileType === "document" &&
-    (attachment.mimeType?.includes("pdf") ||
-      attachment.url.split("?")[0].toLowerCase().endsWith(".pdf"));
+  const isPdf = fileType === "pdf";
 
   if (fileType === "image") {
     return (
@@ -44,14 +43,16 @@ export const AttachmentRenderer = ({
           isMulti ? "aspect-square" : "max-w-[360px]"
         }`}
       >
-        <img
+        <Image
           src={attachment.url}
           alt={attachment.fileName || "Image attachment"}
+          width={720}
+          height={720}
+          unoptimized
+          sizes={isMulti ? "(max-width: 768px) 50vw, 180px" : "(max-width: 768px) 100vw, 360px"}
           className={`w-full h-full ${
             isMulti ? "object-cover" : "object-contain max-h-[360px]"
           }`}
-          loading="lazy"
-          decoding="async"
         />
       </div>
     );

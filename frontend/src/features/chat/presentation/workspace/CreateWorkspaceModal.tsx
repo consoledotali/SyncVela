@@ -5,9 +5,10 @@ import { useRouter, usePathname } from "next/navigation"; // 🔴 THE FIX: Impor
 import { X, Loader2, Briefcase } from "lucide-react";
 import { Button } from "@/src/components/ui/button";
 import { Input } from "@/src/components/ui/input";
-import { useChatStore } from "@/src/store/chat";
+import { useChatStore } from "@/src/features/chat/state";
 import { useAuthStore } from "@/src/store/authStore";
 import { authFetch } from "@/src/lib/authFetch";
+import { toast } from "sonner";
 
 interface CreateWorkspaceModalProps {
   isOpen: boolean;
@@ -71,10 +72,13 @@ export default function CreateWorkspaceModal({
         }
       } else {
         const err = await response.json();
-        alert(err.error || "Failed to create workspace");
+                toast.error(err.error || "Failed to create workspace");
+
       }
-    } catch (error) {
-      console.error("❌ Workspace creation error:", error);
+        } catch (error) {
+      console.error("Workspace creation error:", error);
+      toast.error(error instanceof Error ? error.message : "Failed to create workspace.");
+
     } finally {
       setIsLoading(false);
     }

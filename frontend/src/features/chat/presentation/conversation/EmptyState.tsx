@@ -1,6 +1,6 @@
 import React from "react";
 import { Hash } from "lucide-react";
-import { Workspace } from "@/src/store/chat";
+import { Workspace } from "@/src/features/chat/state";
 
 interface EmptyStateProps {
   activeWorkspace: Workspace | undefined;

@@ -1,29 +1,49 @@
 import React, { useState } from "react";
 import { useSocket } from "@/src/providers/SocketProvider";
-import { useChatStore } from "@/src/store/chat";
-import { usePermissions } from "@/src/hooks/usePermissions";
+import { useChatStore } from "@/src/features/chat/state";
+import { useAuthStore } from "@/src/store/authStore";
+import { usePermissions } from "@/src/features/chat/runtime/workspace/usePermissions";
 import { MessageSquare } from "lucide-react";
 import {
   Avatar,
   AvatarFallback,
   AvatarImage,
 } from "@/src/components/ui/avatar";
-import { AttachmentRenderer } from "./message/AttachmentRenderer";
-import { getFileDetails } from "./message/utils";
-import { MessageStatus } from "./message/MessageStatus";
-import { MessageActions } from "./message/MessageActions";
-import { Lightbox, LightboxItem } from "./message/Lightbox";
+import { AttachmentRenderer } from "./AttachmentRenderer";
+import { getFileDetails } from "./utils";
+import { MessageStatus } from "./MessageStatus";
+import { MessageActions } from "./MessageActions";
+import { Lightbox, LightboxItem } from "./Lightbox";
+import { createReactionPayload } from "@/src/features/chat/protocol/socketPayloads";
+import { resolveAvatarUrl } from "@/src/lib/avatarUrl";
+import type {
+  Attachment,
+  Message,
+  SidebarUser,
+} from "@/src/features/chat/state/types";
+
+type MessageBubbleProps = {
+  msg: Message;
+  isMe: boolean;
+  isReadRealtime?: boolean;
+  hideHeader?: boolean;
+  isInsideThreadPanel?: boolean;
+};
+
+type ReactionSummary = { emoji: string; userIds: string[] };
 
 export default function MessageBubble({
   msg,
   isMe,
-  isReadRealtime,
+  isReadRealtime = false,
   hideHeader = false,
   isInsideThreadPanel = false,
-}: any) {
+}: MessageBubbleProps) {
   const { socket } = useSocket();
+  const { user } = useAuthStore();
   const {
     activeChannelId,
+    activeWorkspaceId,
     activeRoomId,
     selectedUser,
     setSelectedUser,
@@ -34,6 +54,7 @@ export default function MessageBubble({
     openThread,
     highlightedMessageId,
     targetLastReadAt,
+    updateMessageReactions,
   } = useChatStore();
 
   const { hasPermission } = usePermissions();
@@ -51,56 +72,66 @@ export default function MessageBubble({
   const canDelete = isMe || (isChannelView && canModerate);
   const canEdit = isMe;
 
-  const senderName = msg.sender?.name || (isMe ? "You" : "User");
+    const isDeletedSender = !isMe && (msg.sender?.isDeleted === true || !msg.sender);
+  const senderName = msg.sender?.isDeleted ? "Deleted User" : (msg.sender?.name || (isMe ? "You" : "Deleted User"));
+
   const initials = senderName.substring(0, 2).toUpperCase();
   const timeString = new Date(msg.createdAt).toLocaleTimeString([], {
     hour: "numeric",
     minute: "2-digit",
   });
 
+  const sender = msg.sender;
   const isFormerMember =
-    !isMe && msg.sender && !users.some((u) => u.id === msg.sender.id);
+    !isMe && Boolean(sender && !sender.isDeleted && !users.some((user) => user.id === sender.id));
 
   const attachments = Array.isArray(msg.attachments) ? msg.attachments : [];
   const replyCount = msg._count?.replies || 0;
+  const reactionSummaries = Object.values(
+    (msg.reactions || []).reduce<Record<string, ReactionSummary>>((groups, reaction) => {
+      const summary = groups[reaction.emoji] || {
+        emoji: reaction.emoji,
+        userIds: [],
+      };
+      summary.userIds.push(reaction.userId);
+      groups[reaction.emoji] = summary;
+      return groups;
+    }, {}),
+  );
 
-  const mediaFiles = attachments.filter((att: any) => {
+  const mediaFiles = attachments.filter((att: Attachment) => {
     if (!att || !att.url) return false;
     // Pass mimeType so optimistic blob-URL attachments (no file extension) are
     // still classified correctly — otherwise the sender's own images fall into
     // the doc bucket and render full-width instead of in the media grid.
-    const type = getFileDetails(att.url, att.mimeType).type;
+    const type = getFileDetails(att.url, att.mimeType, att.fileName).type;
     return type === "image" || type === "video";
   });
 
-  const docFiles = attachments.filter((att: any) => {
+  const docFiles = attachments.filter((att: Attachment) => {
     if (!att || !att.url) return false;
-    const type = getFileDetails(att.url, att.mimeType).type;
+    const type = getFileDetails(att.url, att.mimeType, att.fileName).type;
     return type !== "image" && type !== "video";
   });
 
   // Attachments that can be previewed inside the shared Lightbox gallery:
   // all media plus PDFs. Order matters — the index passed to onOpen must match
   // this list so the correct item opens and the thumbnail rail lines up.
-  const isPreviewable = (att: any) => {
-    const type = getFileDetails(att.url, att.mimeType).type;
+  const isPreviewable = (att: Attachment) => {
+    const type = getFileDetails(att.url, att.mimeType, att.fileName).type;
     if (type === "image" || type === "video") return true;
-    return (
-      type === "document" &&
-      (att.mimeType?.includes("pdf") ||
-        att.url.split("?")[0].toLowerCase().endsWith(".pdf"))
-    );
+    return type === "pdf";
   };
 
   const previewables: LightboxItem[] = attachments
-    .filter((att: any) => att && att.url && isPreviewable(att))
-    .map((att: any) => ({
+    .filter((att: Attachment) => Boolean(att?.url) && isPreviewable(att))
+    .map((att: Attachment) => ({
       url: att.url,
       fileName: att.fileName,
       mimeType: att.mimeType,
     }));
 
-  const previewIndexOf = (att: any) =>
+  const previewIndexOf = (att: Attachment) =>
     previewables.findIndex((p) => p.url === att.url);
 
   const handleDelete = () => {
@@ -148,21 +179,42 @@ export default function MessageBubble({
 
   const handleUserClick = (e: React.MouseEvent) => {
     e.stopPropagation();
-    if (isMe || isFormerMember || !msg.sender) return;
+    if (isMe || isFormerMember || isDeletedSender || !sender) return;
 
-    const targetSidebarUser = users.find((u) => u.id === msg.sender.id);
-    const targetUserPayload = targetSidebarUser || {
-      id: msg.sender.id,
-      name: msg.sender.name,
+    const targetSidebarUser = users.find((user) => user.id === sender.id);
+    const targetUserPayload: SidebarUser = targetSidebarUser || {
+      id: sender.id,
+      name: sender.name,
       email: "",
-      avatarUrl: msg.sender.avatarUrl,
+      avatarUrl: sender.avatarUrl,
     };
 
     setSelectedUser(targetUserPayload);
 
     if (socket) {
-      socket.emit("joinPrivateChat", msg.sender.id);
+      socket.emit("joinPrivateChat", {
+        targetUserId: sender.id,
+        workspaceId: activeWorkspaceId || undefined,
+      });
     }
+  };
+
+  const handleReactionToggle = (emoji: string) => {
+    if (!socket) return;
+    const payload = createReactionPayload(msg.id, emoji);
+    if (!payload) return;
+    socket.emit(
+      "toggle_reaction",
+      payload,
+      (result: {
+        ok?: true;
+        reactions?: Array<{ emoji: string; userId: string }>;
+      }) => {
+        if (result?.ok && result.reactions) {
+          updateMessageReactions(msg.id, result.reactions);
+        }
+      },
+    );
   };
 
   const isThreadReplyRead = React.useMemo(() => {
@@ -190,6 +242,7 @@ export default function MessageBubble({
         onEdit={() => setIsEditing(true)}
         onDelete={handleDelete}
         onReply={!isInsideThreadPanel ? () => openThread(msg) : undefined}
+        onReactionSelect={handleReactionToggle}
       />
 
       <div className="w-[42px] shrink-0 flex flex-col items-center select-none relative">
@@ -205,8 +258,8 @@ export default function MessageBubble({
           >
             <AvatarImage
               src={
-                msg.sender?.avatarUrl
-                  ? msg.sender.avatarUrl
+                resolveAvatarUrl(msg.sender?.avatarUrl)
+                  ? resolveAvatarUrl(msg.sender?.avatarUrl)
                   : `https://api.dicebear.com/7.x/initials/svg?seed=${senderName}`
               }
               // 🚀 THE FIX: Force the image to map exactly to the parent's corners
@@ -237,18 +290,22 @@ export default function MessageBubble({
               {senderName}
             </span>
 
-            {isFormerMember && (
+            {isDeletedSender ? (
+              <span className="px-1.5 py-0.5 bg-muted text-muted-foreground text-[9px] font-bold uppercase tracking-wider rounded-sm">
+                Deleted User
+              </span>
+            ) : isFormerMember ? (
               <span className="px-1.5 py-0.5 bg-destructive/10 text-destructive text-[9px] font-bold uppercase tracking-wider rounded-sm">
                 Deactivated
               </span>
-            )}
+            ) : null}
 
             <span className="text-xs text-muted-foreground font-medium ml-1">
               {timeString}
             </span>
             {isMe && (
               <MessageStatus
-                status={msg.status}
+                status={msg.status ?? "sent"}
                 isReadRealtime={
                   isInsideThreadPanel ? isThreadReplyRead : isReadRealtime
                 }
@@ -302,7 +359,7 @@ export default function MessageBubble({
           <div
             className={`mt-1.5 grid gap-1.5 ${mediaFiles.length === 1 ? "grid-cols-1 max-w-[360px]" : "grid-cols-2 max-w-[420px]"}`}
           >
-            {mediaFiles.map((att: any, index: number) => (
+            {mediaFiles.map((att: Attachment, index: number) => (
               <AttachmentRenderer
                 key={att.id || index}
                 attachment={att}
@@ -315,7 +372,7 @@ export default function MessageBubble({
 
         {docFiles.length > 0 && (
           <div className="mt-1.5 flex flex-col gap-1.5">
-            {docFiles.map((att: any, index: number) => (
+            {docFiles.map((att: Attachment, index: number) => (
               <AttachmentRenderer
                 key={att.id || index}
                 attachment={att}
@@ -327,6 +384,34 @@ export default function MessageBubble({
                 }
               />
             ))}
+          </div>
+        )}
+
+        {reactionSummaries.length > 0 && (
+          <div
+            className="mt-2 flex flex-wrap items-center gap-1.5"
+            role="group"
+            aria-label="Message reactions"
+          >
+            {reactionSummaries.map(({ emoji, userIds }) => {
+              const reactedByCurrentUser = userIds.includes(user?.id || "");
+              return (
+                <button
+                  key={emoji}
+                  type="button"
+                  onClick={() => handleReactionToggle(emoji)}
+                  aria-pressed={reactedByCurrentUser}
+                  className={`inline-flex min-h-7 items-center gap-1 rounded-md border px-2 text-xs font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary ${
+                    reactedByCurrentUser
+                      ? "border-primary/50 bg-primary/10 text-primary"
+                      : "border-border bg-background text-muted-foreground hover:border-primary/40 hover:text-foreground"
+                  }`}
+                >
+                  <span aria-hidden="true">{emoji}</span>
+                  <span>{userIds.length}</span>
+                </button>
+              );
+            })}
           </div>
         )}
 
