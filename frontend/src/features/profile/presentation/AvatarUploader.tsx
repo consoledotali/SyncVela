@@ -1,6 +1,7 @@
 "use client";
 
-import React, { useRef, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
+
 import { useAuthStore } from "@/src/store/authStore";
 import {
   Avatar,
@@ -8,8 +9,10 @@ import {
   AvatarImage,
 } from "@/src/components/ui/avatar";
 import { Camera, Loader2 } from "lucide-react";
-import { useS3Upload } from "@/src/hooks/useS3Upload";
+import { useS3Upload } from "@/src/features/uploads/client/useS3Upload";
 import { authFetch } from "@/src/lib/authFetch";
+import { resolveAvatarUrl } from "@/src/lib/avatarUrl";
+import { toast } from "sonner";
 
 export default function AvatarUploader() {
   const { user, login } = useAuthStore();
@@ -17,8 +20,15 @@ export default function AvatarUploader() {
   // 🚀 S3 Engine Hook
   const { uploadFile, isUploading: isS3Uploading } = useS3Upload();
   const [isUpdatingDB, setIsUpdatingDB] = useState(false);
+  const [localPreviewUrl, setLocalPreviewUrl] = useState<string | null>(null);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    return () => {
+      if (localPreviewUrl) URL.revokeObjectURL(localPreviewUrl);
+    };
+  }, [localPreviewUrl]);
 
   // Unified loading state
   const isUploading = isS3Uploading || isUpdatingDB;
@@ -27,16 +37,18 @@ export default function AvatarUploader() {
     const file = e.target.files?.[0];
 
     // Initial memory check
-    const currentToken = useAuthStore.getState().token;
+        const currentToken = useAuthStore.getState().token;
     if (!file || !user || !currentToken) return;
 
+    setLocalPreviewUrl(URL.createObjectURL(file));
+
     try {
+
       // 1. FILE STORAGE UPLOAD
       // Agar token expire hua toh yeh hook background mein naya token mangwa kar Zustand mein rakh dega
-      // Avatars are uploaded public so they display directly and stay cached.
-      const uploadData = await uploadFile(file, "public");
+      const uploadData = await uploadFile(file, "avatar");
 
-      if (!uploadData || !uploadData.url) {
+      if (!uploadData?.fileKey) {
         throw new Error("S3 Cloud storage upload rejected the file.");
       }
 
@@ -48,7 +60,7 @@ export default function AvatarUploader() {
         headers: {
           "Content-Type": "application/json",
         },
-        body: JSON.stringify({ avatarUrl: uploadData.url }),
+        body: JSON.stringify({ fileKey: uploadData.fileKey }),
       });
 
       if (!updateRes.ok) {
@@ -65,17 +77,30 @@ export default function AvatarUploader() {
         );
       }
 
-      // 4. GLOBAL STATE OVERWRITE WITH CACHE BUSTING
+      // Preserve the full authenticated-user contract. The avatar endpoint
+      // intentionally returns only profile fields, while provider and
+      // hasPassword are auth-state fields required by profile settings.
+            const canonicalAvatarUrl =
+        resolveAvatarUrl(updateData.user?.avatarUrl) || updateData.user?.avatarUrl;
+      if (!canonicalAvatarUrl) {
+        throw new Error("Avatar response did not include a usable image URL.");
+      }
+      const cacheSeparator = canonicalAvatarUrl.includes("?") ? "&" : "?";
+
       const updatedUserWithCache = {
+        ...user,
         ...updateData.user,
-        avatarUrl: `${updateData.user.avatarUrl}?t=${Date.now()}`,
+        avatarUrl: `${canonicalAvatarUrl}${cacheSeparator}t=${Date.now()}`,
       };
 
-      // Type-safe login trigger
+      // Type-safe login trigger; the local preview remains visible until the
+      // canonical avatar state has been committed, preventing initials flash.
       login(updatedUserWithCache, latestToken);
+      setLocalPreviewUrl(null);
+
     } catch (error) {
-      console.error("❌ Avatar Injection Pipeline Failed:", error);
-      alert("Failed to update avatar. Check console.");
+      console.error("Avatar update failed:", error);
+      toast.error(error instanceof Error ? error.message : "Failed to update avatar. Please try again.");
     } finally {
       setIsUpdatingDB(false);
       // Reset DOM input
@@ -95,7 +120,8 @@ export default function AvatarUploader() {
         <Avatar className="h-24 w-24 border border-border shadow-sm !rounded-2xl">
           <AvatarImage
             src={
-              user.avatarUrl ||
+              localPreviewUrl ||
+              resolveAvatarUrl(user.avatarUrl) ||
               `https://api.dicebear.com/7.x/initials/svg?seed=${user.name}`
             }
             className="object-cover w-full h-full !rounded-2xl"
