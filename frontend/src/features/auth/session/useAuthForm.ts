@@ -3,6 +3,12 @@ import { useRouter } from "next/navigation";
 import axios from "axios";
 import { useAuthStore } from "@/src/store/authStore";
 
+function getErrorMessage(error: unknown) {
+  return error instanceof Error
+    ? error.message
+    : "Authentication failed. Please try again.";
+}
+
 export const useAuthForm = (initialMode: boolean = true) => {
   const { login } = useAuthStore();
   const router = useRouter();
@@ -88,8 +94,8 @@ export const useAuthForm = (initialMode: boolean = true) => {
           `/auth/verify-otp?email=${encodeURIComponent(formData.email)}`,
         );
       }
-    } catch (err: any) {
-      setError(err.message);
+    } catch (err: unknown) {
+      setError(getErrorMessage(err));
     } finally {
       setIsLoading(false);
     }

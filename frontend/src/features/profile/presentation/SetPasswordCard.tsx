@@ -8,6 +8,10 @@ import { KeyRound, Loader2, CheckCircle2 } from "lucide-react";
 
 const API = process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000";
 
+function getErrorMessage(error: unknown, fallback: string) {
+  return error instanceof Error ? error.message : fallback;
+}
+
 export default function SetPasswordCard() {
   const { user } = useAuthStore();
   const setUser = (patch: Partial<NonNullable<typeof user>>) => {
@@ -22,8 +26,12 @@ export default function SetPasswordCard() {
   const [error, setError] = useState("");
   const [done, setDone] = useState(false);
 
-  // 🚀 THE GATEKEEPER: Agar user ke paas already password hai, toh yeh component render hi nahi hoga!
-  if (user?.hasPassword && !done) return null;
+  // This onboarding applies only to accounts created through Google without a
+  // local password. Missing/partial profile state must never classify a local
+  // account as Google-only.
+  const isGoogleOnlyAccount = user?.provider === "GOOGLE" && user.hasPassword === false;
+
+  if (!isGoogleOnlyAccount && !done) return null;
 
   const requestOtp = async () => {
     setError("");
@@ -37,8 +45,8 @@ export default function SetPasswordCard() {
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Failed to send code.");
       setStep("otp");
-    } catch (e: any) {
-      setError(e.message);
+    } catch (e: unknown) {
+      setError(getErrorMessage(e, "Failed to send code."));
     } finally {
       setLoading(false);
     }
@@ -63,8 +71,8 @@ export default function SetPasswordCard() {
       // 🚀 STATE UPDATE: Yeh Zustand store ko update karega aur agli dafa yeh component automatically hide ho jayega
       setDone(true);
       setUser({ hasPassword: true });
-    } catch (e: any) {
-      setError(e.message);
+    } catch (e: unknown) {
+      setError(getErrorMessage(e, "Failed to set password."));
     } finally {
       setLoading(false);
     }
