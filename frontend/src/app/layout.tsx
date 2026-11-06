@@ -1,14 +1,10 @@
 import type { Metadata } from "next";
-import { Inter } from "next/font/google";
+import { AuthSessionProvider } from "@/src/providers/AuthSessionProvider";
+import ToastProvider from "@/src/providers/ToastProvider";
+import { ThemeProvider } from "@/src/providers/ThemeProvider";
 import "./globals.css";
-import { SocketProvider } from "@/src/providers/SocketProvider";
 
-// 🛡️ ENTERPRISE FONT: Inter
-const inter = Inter({
-  variable: "--font-sans", // CSS variable mapped for Tailwind
-  subsets: ["latin"],
-  display: "swap",
-});
+
 
 export const metadata: Metadata = {
   title: "SyncVela | Secure Workspace",
@@ -20,12 +16,26 @@ export default function RootLayout({
 }: Readonly<{
   children: React.ReactNode;
 }>) {
-  return (
+    return (
     <html lang="en" suppressHydrationWarning>
+      <head>
+        <script
+          dangerouslySetInnerHTML={{
+            __html: `(() => { try { const saved = localStorage.getItem("syncvela-theme"); const prefersDark = window.matchMedia("(prefers-color-scheme: dark)").matches; const theme = saved === "dark" || saved === "light" ? saved : prefersDark ? "dark" : "light"; document.documentElement.classList.toggle("dark", theme === "dark"); document.documentElement.style.colorScheme = theme; } catch {} })();`,
+          }}
+        />
+      </head>
       <body
-        className={`${inter.variable} font-sans antialiased bg-background text-foreground`}
+
+        className="font-sans antialiased bg-background text-foreground"
+
       >
-        <SocketProvider>{children}</SocketProvider>
+        <ThemeProvider>
+          <AuthSessionProvider>
+            {children}
+            <ToastProvider />
+          </AuthSessionProvider>
+        </ThemeProvider>
       </body>
     </html>
   );
