@@ -7,6 +7,10 @@ import { useAuthStore } from "@/src/store/authStore";
 import { Button } from "@/src/components/ui/button";
 import { Shield, Loader2, AlertCircle, ArrowRight } from "lucide-react";
 
+function getErrorMessage(error: unknown, fallback: string) {
+  return error instanceof Error ? error.message : fallback;
+}
+
 function VerifyOTPContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -102,8 +106,8 @@ function VerifyOTPContent() {
       setTimeLeft(60); // Timer Wapas 60s par
       setOtp(new Array(6).fill("")); // Inputs khali
       inputRefs.current[0]?.focus();
-    } catch (err: any) {
-      setError(err.message);
+    } catch (err: unknown) {
+      setError(getErrorMessage(err, "Failed to resend code."));
     } finally {
       setIsResending(false);
     }
@@ -142,8 +146,8 @@ function VerifyOTPContent() {
       } else {
         router.push("/");
       }
-    } catch (err: any) {
-      setError(err.message);
+    } catch (err: unknown) {
+      setError(getErrorMessage(err, "Invalid verification code."));
       setOtp(new Array(6).fill(""));
       inputRefs.current[0]?.focus();
     } finally {
@@ -162,7 +166,7 @@ function VerifyOTPContent() {
             Authenticate
           </h1>
           <p className="text-sm text-zinc-500 text-center leading-relaxed">
-            We've sent a 6-digit secure code to <br />
+            We&apos;ve sent a 6-digit secure code to <br />
             <span className="font-semibold text-zinc-900">{email}</span>
           </p>
         </div>
@@ -212,7 +216,7 @@ function VerifyOTPContent() {
 
           {/* 🟢 THE DYNAMIC RESEND BUTTON */}
           <p className="text-xs text-center text-zinc-500 mt-6 flex flex-col sm:flex-row items-center justify-center gap-1">
-            <span>Didn't receive the code?</span>
+            <span>Didn&apos;t receive the code?</span>
             <button
               type="button"
               disabled={timeLeft > 0 || isResending}

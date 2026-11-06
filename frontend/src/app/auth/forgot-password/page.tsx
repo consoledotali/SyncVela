@@ -15,6 +15,11 @@ import {
   CardTitle,
 } from "@/src/components/ui/card";
 import { Loader2, ArrowLeft, KeyRound, Eye, EyeOff } from "lucide-react";
+import { toast } from "sonner";
+
+function getErrorMessage(error: unknown, fallback: string) {
+  return error instanceof Error ? error.message : fallback;
+}
 
 export default function ForgotPasswordPage() {
   const router = useRouter();
@@ -53,8 +58,8 @@ export default function ForgotPasswordPage() {
       // Success, move to step 2
       setSuccessMsg("If this account exists, a 6-digit OTP has been sent.");
       setStep(2);
-    } catch (err: any) {
-      setError(err.message);
+    } catch (err: unknown) {
+      setError(getErrorMessage(err, "Failed to request reset."));
     } finally {
       setIsLoading(false);
     }
@@ -84,10 +89,10 @@ export default function ForgotPasswordPage() {
         throw new Error(data?.error || "Failed to reset password.");
 
       // Success, redirect to login
-      alert("Password reset successfully! You can now log in.");
+      toast.success("Password reset successfully. You can now log in.");
       router.push("/auth/login");
-    } catch (err: any) {
-      setError(err.message);
+    } catch (err: unknown) {
+      setError(getErrorMessage(err, "Failed to reset password."));
     } finally {
       setIsLoading(false);
     }

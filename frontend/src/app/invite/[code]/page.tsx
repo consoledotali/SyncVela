@@ -6,11 +6,12 @@ import { useAuthStore } from "@/src/store/authStore";
 import { Loader2, ShieldCheck, XCircle, UserCheck } from "lucide-react";
 import { Button } from "@/src/components/ui/button";
 import { authFetch } from "@/src/lib/authFetch";
+import { rememberInviteDestination } from "@/src/features/auth/navigation/inviteContinuation";
 
 export default function InvitePage() {
   const params = useParams();
   const router = useRouter();
-  const { isAuthenticated, token } = useAuthStore();
+  const { isAuthenticated, isSessionReady, token } = useAuthStore();
 
   const [status, setStatus] = useState<
     "loading" | "success" | "already_member" | "error"
@@ -21,9 +22,11 @@ export default function InvitePage() {
   const hasFetched = useRef(false);
 
   useEffect(() => {
+    if (!isSessionReady) return;
+
     if (!isAuthenticated || !token) {
-      localStorage.setItem("pendingInvite", `/invite/${inviteCode}`);
-      router.push("/auth/login");
+      rememberInviteDestination(inviteCode);
+      router.replace("/auth/login");
       return;
     }
 
@@ -50,9 +53,9 @@ export default function InvitePage() {
             localStorage.setItem("lastActiveWorkspaceId", data.workspaceId);
           }
 
-          setTimeout(() => {
-            window.location.href = "/";
-          }, 1500);
+          window.setTimeout(() => {
+            router.replace("/");
+          }, 900);
         } else {
           const err = await response.json();
 
@@ -64,9 +67,9 @@ export default function InvitePage() {
               localStorage.setItem("lastActiveWorkspaceId", err.workspaceId);
             }
 
-            setTimeout(() => {
-              window.location.href = "/";
-            }, 1500);
+            window.setTimeout(() => {
+              router.replace("/");
+            }, 900);
           } else {
             setErrorMessage(
               err.error || "Failed to join workspace. Invalid or expired link.",
@@ -74,7 +77,7 @@ export default function InvitePage() {
             setStatus("error");
           }
         }
-      } catch (error) {
+      } catch {
         setErrorMessage(
           "Network error. Could not connect to SyncVela servers.",
         );
@@ -83,7 +86,7 @@ export default function InvitePage() {
     };
 
     joinWorkspace();
-  }, [inviteCode, isAuthenticated, token, router]);
+  }, [inviteCode, isAuthenticated, isSessionReady, token, router]);
 
   return (
     <div className="flex h-screen w-full items-center justify-center bg-gray-50">

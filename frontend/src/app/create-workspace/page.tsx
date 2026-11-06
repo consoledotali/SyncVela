@@ -5,9 +5,10 @@ import { useRouter } from "next/navigation";
 import { Loader2, Briefcase, Sparkles } from "lucide-react";
 import { Button } from "@/src/components/ui/button";
 import { Input } from "@/src/components/ui/input";
-import { useChatStore } from "@/src/store/chat";
+import { useChatStore } from "@/src/features/chat/state";
 import { useAuthStore } from "@/src/store/authStore";
 import { authFetch } from "@/src/lib/authFetch";
+import { toast } from "sonner";
 
 export default function CreateWorkspacePage() {
   const [name, setName] = useState("");
@@ -52,10 +53,13 @@ export default function CreateWorkspacePage() {
         router.push("/");
       } else {
         const err = await response.json();
-        alert(err.error || "Failed to create workspace");
+                toast.error(err.error || "Failed to create workspace");
+
       }
-    } catch (error) {
-      console.error("❌ Workspace creation error:", error);
+        } catch (error) {
+      console.error("Workspace creation error:", error);
+      toast.error(error instanceof Error ? error.message : "Failed to create workspace.");
+
     } finally {
       setIsLoading(false);
     }
