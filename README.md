@@ -1,352 +1,376 @@
-# SyncVela
+<div align="center">
 
-![Next.js](https://img.shields.io/badge/Next.js-16-black?style=for-the-badge&logo=next.js)
-![Node.js](https://img.shields.io/badge/Node.js-20+-green?style=for-the-badge&logo=node.js)
-![Socket.IO](https://img.shields.io/badge/Socket.IO-Real--Time-black?style=for-the-badge&logo=socket.io)
-![Prisma](https://img.shields.io/badge/Prisma-ORM-blue?style=for-the-badge&logo=prisma)
-![PostgreSQL](https://img.shields.io/badge/PostgreSQL-15-blue?style=for-the-badge&logo=postgresql)
-![Docker](https://img.shields.io/badge/Docker-Compose-blue?style=for-the-badge&logo=docker)
+# ⚡ SyncVela
 
-SyncVela is a real-time team collaboration platform for multi-tenant workspaces.
-It combines channel messaging, direct messaging, role-based authorization, and file attachments with a Next.js + Node.js architecture.
+**Enterprise-Grade, Multi-Tenant Real-Time Collaboration & Team Messaging Platform**
 
-## Table of Contents
+*Engineered with Next.js 15, Node.js 22, Socket.IO, Redis Pub/Sub, PostgreSQL, Prisma ORM, and MinIO/S3.*
 
-- [Overview](#overview)
-- [Architecture](#architecture)
-- [Core Features](#core-features)
-- [Repository Structure](#repository-structure)
-- [Technology Stack](#technology-stack)
-- [Environment Variables](#environment-variables)
-- [Local Development](#local-development)
-- [Docker Development](#docker-development)
-- [Production Build and Runtime](#production-build-and-runtime)
-- [Database and Prisma Operations](#database-and-prisma-operations)
-- [Security Notes](#security-notes)
-- [Operational Checklist](#operational-checklist)
-- [Troubleshooting](#troubleshooting)
-- [License](#license)
+[![Next.js](https://img.shields.io/badge/Next.js-15.0-black?style=for-the-badge&logo=next.js)](https://nextjs.org/)
+[![Node.js](https://img.shields.io/badge/Node.js-22.x-339933?style=for-the-badge&logo=node.js)](https://nodejs.org/)
+[![TypeScript](https://img.shields.io/badge/TypeScript-5.x-3178C6?style=for-the-badge&logo=typescript)](https://www.typescriptlang.org/)
+[![Socket.IO](https://img.shields.io/badge/Socket.io-4.8-010101?style=for-the-badge&logo=socketdotio)](https://socket.io/)
+[![Redis](https://img.shields.io/badge/Redis-7.x-DC382D?style=for-the-badge&logo=redis)](https://redis.io/)
+[![PostgreSQL](https://img.shields.io/badge/PostgreSQL-16-4169E1?style=for-the-badge&logo=postgresql)](https://www.postgresql.org/)
+[![Prisma](https://img.shields.io/badge/Prisma-6.x-2D3748?style=for-the-badge&logo=prisma)](https://www.prisma.io/)
+[![Docker](https://img.shields.io/badge/Docker-Compose-2496ED?style=for-the-badge&logo=docker)](https://www.docker.com/)
 
-## Overview
+<p align="center">
+  <a href="#-system-architecture">System Architecture</a> •
+  <a href="#-key-features">Key Features</a> •
+  <a href="#-repository-structure">Repository Structure</a> •
+  <a href="#-quick-start">Quick Start</a> •
+  <a href="#-environment-variables">Environment Variables</a> •
+  <a href="#-real-time-websocket-protocol">WebSocket Protocol</a> •
+  <a href="#-security--governance">Security & RBAC</a> •
+  <a href="#-production--deployment">Production & CI/CD</a>
+</p>
 
-SyncVela is designed around three production priorities:
+</div>
 
-- Real-time reliability: Socket.IO-powered collaboration and message fan-out.
-- Tenant isolation: workspace-scoped data access and RBAC controls.
-- Deployment readiness: Dockerized frontend/backend with PostgreSQL.
+---
 
-## Architecture
+## 📖 Executive Overview
 
-### High-level Flow
+**SyncVela** is an open-source, production-hardened team collaboration platform designed for low-latency real-time communication, enterprise multi-tenancy, and high concurrency. Built to provide a robust open-source alternative to Slack and Discord, SyncVela enforces strict tenant isolation, distributed real-time state synchronization, and scalable asynchronous file processing.
+
+The platform is architected as a decoupled system featuring a **Next.js 15 App Router** frontend leveraging a Feature-Sliced Design (FSD) methodology, communicating via authenticated REST APIs and duplex **Socket.IO** connections backed by a **Redis Pub/Sub** distributed adapter on a high-throughput **Node.js/Express** backend.
+
+---
+
+## 🏛 System Architecture
+
+SyncVela separates the presentation, API gateway, distributed real-time event bus, relational persistence, and object storage into modular layers:
+
+```mermaid
+flowchart TD
+    subgraph Client ["Client Layer (Next.js 15 App Router)"]
+        UI["React 19 UI / Tailwind CSS"]
+        State["Zustand Slices (Messages, UI, Workspace)"]
+        Query["TanStack Query Cache"]
+        SocketClient["Socket.IO Client Runtime"]
+    end
+
+    subgraph Gateway ["Application Gateway & API (Node.js 22 + Express)"]
+        HTTP["Express REST Endpoints"]
+        AuthMid["JWT & RBAC Middleware"]
+        RateLimit["Distributed Redis Rate Limiter"]
+        SocketServer["Socket.IO Server Engine"]
+    end
+
+    subgraph DistributedBus ["Distributed Real-Time Bus"]
+        RedisPubSub["Redis 7 Pub/Sub & Socket Adapter"]
+        PresenceStore["Redis Presence & Typing Key-Value Store"]
+    end
+
+    subgraph Persistence ["Persistence & Storage Layer"]
+        Prisma["Prisma ORM 6"]
+        Postgres[(PostgreSQL 16 Multi-Tenant Store)]
+        S3Storage[(MinIO / AWS S3 Object Storage)]
+    end
+
+    UI --> State
+    UI --> Query
+    UI --> SocketClient
+
+    Query -- "REST (JSON / Bearer JWT)" --> HTTP
+    SocketClient -- "WSS (Socket.IO Handshake)" --> SocketServer
+
+    HTTP --> AuthMid
+    HTTP --> RateLimit
+    AuthMid --> Prisma
+    SocketServer --> RedisPubSub
+    SocketServer --> PresenceStore
+    SocketServer --> AuthMid
+
+    Prisma --> Postgres
+    HTTP -- "Generate Presigned URL" --> S3Storage
+    UI -- "Direct PUT (Binary Upload)" --> S3Storage
+```
+
+### Architectural Principles
+* **Zero-Trust Multi-Tenancy**: Every workspace is strictly isolated. All database queries, socket rooms, channel lookups, and direct messages enforce tenant boundaries (`workspaceId`) at both the API and database levels.
+* **Horizontal Scalability via Redis Pub/Sub**: Socket.IO nodes are stateless. The `@socket.io/redis-adapter` relays real-time events across any number of clustered backend instances.
+* **Direct-to-S3 Presigned Media Pipeline**: Files and avatars bypass backend application memory entirely. The server generates cryptographically signed, short-lived PUT URLs, allowing the browser to stream media directly to S3/MinIO with MIME validation.
+* **Graceful Optimistic UI**: Frontend chat interactions (messages, reactions, status updates) apply optimistically to local Zustand state while syncing with TanStack Query and Socket.IO fallbacks.
+
+---
+
+## ✨ Key Features
+
+### 🏢 Multi-Tenant Workspace Isolation
+- Dynamic workspace creation with unique slugs, member roles, and avatar branding.
+- Secure, shareable workspace invitation links with cryptographic verification.
+- **Enterprise Governance**: Workspace ownership transfer, role modification (`OWNER`, `ADMIN`, `MEMBER`, `GUEST`), and member eviction protocols.
+
+### 💬 Real-Time Channels & Direct Messaging
+- **Public & Private Channels**: Fine-grained access control ensuring private channels are strictly restricted to invited members.
+- **1:1 Direct Messages**: Workspace-scoped peer-to-peer messaging preventing cross-workspace contamination.
+- **Message Threading**: Nested discussion threads with real-time reply counters and parent message context preservation.
+- **Rich Emoji Reactions**: Instant multi-user emoji reactions with real-time add/remove attribution counters.
+- **Real-Time Presence & Typing Indicators**: Ephemeral user typing states and presence heartbeats backed by Redis TTL-expiry.
+
+### 📦 Media Upload & Object Storage
+- Direct client-to-storage uploads using **AWS S3 / MinIO** presigned URLs.
+- Dual-bucket segregation: Public bucket for user/workspace avatars; private bucket for secure channel attachments.
+- Automatic image lightbox previews, download links, and inline document renderers.
+
+### 🛡️ Enterprise Security & Resilience
+- **Authentication**: Email/Password with Resend OTP email verification, Google OAuth 2.0 integration, and HttpOnly SameSite JWT refresh token rotation.
+- **Rate Limiting**: Distributed Redis token-bucket rate limiting defending authentication endpoints and socket event emitters against abuse.
+- **Data Integrity**: Prisma schema migrations guaranteeing foreign-key cascading and composite indexing for high-speed lookups.
+
+---
+
+## 📂 Repository Structure
+
+The project follows a clean, decoupled monorepo architecture:
+
+```
+Syncvela/
+├── .github/
+│   └── workflows/
+│       └── deploy.yml            # Automated CI/CD pipeline (Lint, Build, Trivy Security Scan, Docker)
+├── backend/
+│   ├── prisma/
+│   │   ├── schema.prisma         # Multi-tenant PostgreSQL relational data models
+│   │   └── migrations/           # Versioned migration history
+│   ├── src/
+│   │   ├── config/               # Database, Redis, CORS, and environment configurations
+│   │   ├── controllers/          # REST route handlers (Auth, Channels, Messages, Workspaces)
+│   │   ├── features/chat/        # Chat domain validation and socket payload schemas
+│   │   ├── middlewares/          # JWT auth, RBAC authorization, and Redis rate limiters
+│   │   ├── routes/               # Express API route definitions
+│   │   ├── services/             # Business logic layer (Email, S3, Workspace, Message)
+│   │   ├── sockets/              # Socket.IO connection manager, presence, and chat handlers
+│   │   ├── utils/                # JWT helpers, response formatters, and Winston logger
+│   │   └── server.ts             # Express & HTTP server bootstrap
+│   ├── Dockerfile                # Production multi-stage Docker build
+│   ├── package.json              # Backend dependencies & scripts
+│   └── tsconfig.json             # TypeScript compiler settings
+├── frontend/
+│   ├── src/
+│   │   ├── app/                  # Next.js 15 App Router pages & layouts
+│   │   │   ├── auth/             # Login, Signup, Forgot Password, Verify OTP
+│   │   │   ├── create-workspace/ # Workspace onboarding wizard
+│   │   │   ├── invite/[code]/    # Workspace invite acceptance route
+│   │   │   └── page.tsx          # Main authenticated chat application hub
+│   │   ├── components/ui/        # Reusable Shadcn UI primitives (Dialog, Button, Input, Avatar)
+│   │   ├── features/             # Feature-Sliced Architecture (FSD) modules
+│   │   │   ├── auth/             # Authentication forms, OTP handlers, session hooks
+│   │   │   ├── chat/             # Chat presentation, runtime hooks, state slices, protocol
+│   │   │   ├── profile/          # Profile modal, avatar uploader, password cards
+│   │   │   └── uploads/          # Client-side S3 presigned upload hooks
+│   │   ├── lib/                  # Axios API client, Socket.IO client, utils
+│   │   ├── providers/            # React Query, Theme, and OAuth context providers
+│   │   ├── shared/ui/            # Shared UI components (ThemeToggle)
+│   │   └── store/                # Root Zustand store integrating feature slices
+│   ├── Dockerfile                # Pinned Alpine Next.js 15 standalone container
+│   ├── package.json              # Frontend dependencies & scripts
+│   └── tsconfig.json             # TypeScript compiler configuration
+├── docker-compose.yml            # Local development infrastructure (PostgreSQL, Redis, MinIO)
+├── .gitignore                    # Root git exclusion rules
+└── README.md                     # Platform documentation
+```
+
+---
+
+## 🚀 Quick Start
+
+### Prerequisites
+- **Node.js**: `v22.x` or later
+- **npm**: `v10.x` or later
+- **Docker & Docker Compose**: For running PostgreSQL, Redis, and MinIO locally
+
+---
+
+### Step 1: Clone the Repository
+```bash
+git clone https://github.com/consoledotali/SyncVela.git
+cd SyncVela
+```
+
+### Step 2: Spin Up Infrastructure Containers
+Start local PostgreSQL (port 5432), Redis (port 6379), and MinIO (ports 9000/9001) with automatic bucket initialization:
+
+```bash
+docker compose up -d
+```
+
+> **MinIO Console**: Accessible at `http://localhost:9001` (Username: `syncvela_local_minio`, Password: `SyncVelaMinIO!2026Local`).
+
+---
+
+### Step 3: Configure Environment Variables
+Copy the template files for both the backend and frontend:
+
+```bash
+# Backend environment configuration
+cp backend/.env.example backend/.env
+
+# Frontend environment configuration
+cp frontend/.env.example frontend/.env.local
+```
+
+*(See [Environment Variables](#-environment-variables) below for field descriptions).*
+
+---
+
+### Step 4: Setup & Run Backend
+
+In your first terminal:
+```bash
+cd backend
+
+# Install dependencies
+npm ci
+
+# Run database migrations against PostgreSQL
+npx prisma migrate deploy
+
+# (Optional) Open Prisma Studio to inspect the database
+# npx prisma studio
+
+# Start backend in development mode
+npm run dev
+```
+The backend server will start on `http://localhost:5000`.
+
+---
+
+### Step 5: Setup & Run Frontend
+
+In your second terminal:
+```bash
+cd frontend
+
+# Install dependencies
+npm ci
+
+# Start frontend in development mode
+npm run dev
+```
+The Next.js application will open on `http://localhost:3000`.
+
+---
+
+## ⚙️ Environment Variables
+
+### Backend Configuration (`backend/.env`)
+
+| Variable | Description | Default / Example | Required |
+|---|---|---|:---:|
+| `PORT` | Port number for the Express server | `5000` | No |
+| `NODE_ENV` | Runtime environment mode | `development` | Yes |
+| `CLIENT_URL` | Allowed origin for CORS & cookie credentials | `http://localhost:3000` | Yes |
+| `FRONTEND_URL` | Application URL used for generated email invite links | `http://localhost:3000` | Yes |
+| `CORS_ORIGINS` | Comma-delimited list of accepted origins | `http://localhost:3000` | Yes |
+| `DATABASE_URL` | PostgreSQL connection string | `postgresql://postgres:rootpassword@localhost:5432/syncvela?schema=public` | Yes |
+| `DATABASE_POOL_MAX` | Maximum connections in PostgreSQL pool | `20` | No |
+| `REDIS_URL` | Redis connection URL for Pub/Sub & rate limiting | `redis://localhost:6379` | Yes |
+| `JWT_SECRET` | Secret key for signing Access Tokens (min 32 chars) | `your-jwt-access-secret-32-chars` | Yes |
+| `JWT_REFRESH_SECRET` | Secret key for signing Refresh Tokens (min 32 chars) | `your-jwt-refresh-secret-32-chars` | Yes |
+| `GOOGLE_CLIENT_ID` | Google OAuth 2.0 Client ID for server validation | `your-client-id.apps.googleusercontent.com` | No |
+| `RESEND_API_KEY` | Resend API Key for sending transactional OTPs & invites | `re_xxxxxxxxxxxxxxxx` | No |
+| `OBJECT_STORAGE_ENDPOINT` | S3 API endpoint for direct file access | `http://localhost:9000` | Yes |
+| `OBJECT_STORAGE_PUBLIC_ENDPOINT` | S3 public URL exposed to client browsers | `http://localhost:9000` | Yes |
+| `OBJECT_STORAGE_REGION` | S3 region identifier | `us-east-1` | Yes |
+| `OBJECT_STORAGE_ACCESS_KEY` | S3 access key / MinIO root user | `syncvela_local_minio` | Yes |
+| `OBJECT_STORAGE_SECRET_KEY` | S3 secret key / MinIO root password | `SyncVelaMinIO!2026Local` | Yes |
+| `OBJECT_STORAGE_BUCKET` | Private bucket for channel attachments | `syncvela-attachments` | Yes |
+| `OBJECT_STORAGE_PUBLIC_BUCKET`| Public bucket for user/workspace avatars | `syncvela-avatars` | Yes |
+| `OBJECT_STORAGE_FORCE_PATH_STYLE` | Path-style routing for S3/MinIO (`true`/`false`) | `true` | Yes |
+
+### Frontend Configuration (`frontend/.env.local`)
+
+| Variable | Description | Default / Example | Required |
+|---|---|---|:---:|
+| `NEXT_PUBLIC_API_URL` | Public backend API & WebSocket base URL | `http://localhost:5000` | Yes |
+| `NEXT_PUBLIC_GOOGLE_CLIENT_ID` | Google OAuth 2.0 Web Client ID for OAuth buttons | `your-client-id.apps.googleusercontent.com` | No |
+
+---
+
+## 📡 Real-Time WebSocket Protocol
+
+SyncVela establishes an authenticated duplex WebSocket connection via Socket.IO:
+
+| Socket Event | Direction | Payload Parameters | Description |
+|---|:---:|---|---|
+| `join_workspace` | Client ➔ Server | `{ workspaceId: string }` | Joins user to the workspace broadcast room after RBAC validation. |
+| `join_channel` | Client ➔ Server | `{ channelId: string }` | Joins a public or private channel room if membership check passes. |
+| `send_message` | Client ➔ Server | `{ channelId?, recipientId?, content, attachments?, parentMessageId? }` | Emits a channel message, direct message, or thread reply. |
+| `new_message` | Server ➔ Client | `MessageObject` | Broadcasts new message to active room participants with sender metadata. |
+| `add_reaction` | Client ➔ Server | `{ messageId: string, emoji: string }` | Records an emoji reaction and broadcasts update to conversation room. |
+| `reaction_updated` | Server ➔ Client | `{ messageId: string, reactions: Reaction[] }` | Notifies clients to optimistically sync reaction counters. |
+| `typing_start` | Client ➔ Server | `{ conversationId: string, isChannel: boolean }` | Triggers typing indicator to other room members via Redis TTL store. |
+| `typing_stop` | Client ➔ Server | `{ conversationId: string, isChannel: boolean }` | Clears active typing status for current user. |
+| `user_presence` | Server ➔ Client | `{ userId: string, status: "online" \| "offline" }` | Emitted when a user disconnects or heartbeat expires. |
+
+---
+
+## 🔒 Security & Governance
+
+### Role-Based Access Control (RBAC) Matrix
+Permissions are strictly evaluated on both the REST API layer and the WebSocket gateway:
+
+| Capability | Workspace OWNER | Workspace ADMIN | Workspace MEMBER | Workspace GUEST |
+|---|:---:|:---:|:---:|:---:|
+| Transfer Workspace Ownership | ✅ | ❌ | ❌ | ❌ |
+| Delete Workspace | ✅ | ❌ | ❌ | ❌ |
+| Evict Members / Manage Roles | ✅ | ✅ | ❌ | ❌ |
+| Create / Delete Public Channels | ✅ | ✅ | ❌ | ❌ |
+| Create / Manage Private Channels | ✅ | ✅ | ✅ | ❌ |
+| Send Messages & File Attachments | ✅ | ✅ | ✅ | ✅ (Assigned channels only) |
+| Add / Remove Emoji Reactions | ✅ | ✅ | ✅ | ✅ |
+
+### Zero-Trust Hardening
+1. **Payload Schema Validation**: All socket emissions and REST payloads are validated at runtime against strict schemas (rejecting prototype pollution and unexpected parameters).
+2. **Distributed Rate Limiting**: Redis token buckets prevent brute-force login attempts and socket message floods.
+3. **CORS & Cookie Policies**: Express uses strict origin checking with `credentials: true` and `SameSite: Lax` / `SameSite: None` flags matching production deployment topologies.
+
+---
+
+## 🚢 Production & CI/CD
+
+The repository includes a hardened continuous delivery pipeline in [`.github/workflows/deploy.yml`](.github/workflows/deploy.yml):
 
 ```mermaid
 flowchart LR
-    A[Next.js Frontend :3000] -->|REST + Cookies| B[Express API :5000]
-    A -->|Socket.IO| C[Socket Server]
-    B --> D[(PostgreSQL)]
-    B --> E[S3/DO Spaces]
-    C --> D
+    A[git push to main] --> B[Quality & Security Gates]
+    B -->|npm ci & npm run build| C[Audit Gate: High & Critical Failures]
+    C --> D[Docker Buildx: Multi-Arch Build]
+    D --> E[Trivy Vulnerability Scan]
+    E -->|0 CVE Blockers| F[Publish Immutable Image Tags]
+    F --> G[Automated Server Deployment via SSH]
 ```
 
-### Backend
-
-- Runtime: Node.js + Express (TypeScript).
-- API prefix: `/api/*`.
-- Health endpoint: `/api/health`.
-- Realtime: Socket.IO handlers under domain-focused modules.
-- Persistence: Prisma ORM on PostgreSQL.
-
-### Frontend
-
-- Next.js App Router.
-- React 19.
-- Zustand for client state management.
-- Socket client initialization in provider layer.
-
-## Core Features
-
-- Multi-tenant workspaces with invite-driven collaboration.
-- Channel messaging and direct messaging.
-- Role matrix with `OWNER`, `ADMIN`, `MEMBER`, `GUEST`.
-- Threaded communication patterns.
-- File upload flow via object storage (S3-compatible).
-- Auth with JWT access/refresh patterns and OAuth support.
-
-## Repository Structure
-
-```text
-chat-app-nextjs/
-├── backend/
-│   ├── prisma/
-│   │   ├── schema.prisma
-│   │   └── migrations/
-│   ├── src/
-│   │   ├── config/
-│   │   ├── controllers/
-│   │   ├── middlewares/
-│   │   ├── routes/
-│   │   ├── services/
-│   │   ├── sockets/
-│   │   └── server.ts
-│   ├── Dockerfile
-│   └── package.json
-├── frontend/
-│   ├── src/
-│   │   ├── app/
-│   │   ├── components/
-│   │   ├── hooks/
-│   │   ├── providers/
-│   │   └── store/
-│   ├── Dockerfile
-│   └── package.json
-├── docker-compose.yml
-└── README.md
-```
-
-## Technology Stack
-
-### Frontend
-
-- Next.js 16
-- React 19
-- TypeScript
-- Tailwind CSS
-- Zustand
-- Socket.IO client
-
-### Backend
-
-- Node.js 20+
-- Express 5
-- TypeScript
-- Socket.IO
-- Prisma
-- PostgreSQL
-- AWS SDK (S3 presigned URLs)
-
-### Infrastructure
-
-- Docker + Docker Compose
-- PostgreSQL 15 (containerized in local/dev compose)
-
-## Environment Variables
-
-Keep secrets out of source control. Use environment-specific secret stores in production.
-
-Bootstrap local env files from samples:
+### Verification Commands
+To test service compilation, type safety, and security audits locally before submitting changes:
 
 ```bash
-cp backend/.env.example backend/.env
-cp frontend/.env.local.example frontend/.env.local
-```
-
-On Windows PowerShell:
-
-```powershell
-Copy-Item backend/.env.example backend/.env
-Copy-Item frontend/.env.local.example frontend/.env.local
-```
-
-### Backend (`backend/.env`)
-
-```env
-# Core
-PORT=5000
-DATABASE_URL="postgresql://postgres:rootpassword@postgres:5432/syncvela?schema=public"
-CLIENT_URL="http://localhost:3000"
-
-# Auth
-JWT_SECRET="replace_with_strong_secret"
-JWT_REFRESH_SECRET="replace_with_strong_refresh_secret"
-
-# OAuth
-GOOGLE_CLIENT_ID="replace_with_google_client_id"
-
-# Email
-RESEND_API_KEY="replace_with_resend_api_key"
-
-# S3 / DigitalOcean Spaces
-DO_SPACES_ENDPOINT="region.digitaloceanspaces.com"
-DO_SPACES_KEY="replace_with_access_key"
-DO_SPACES_SECRET="replace_with_secret_key"
-DO_SPACES_BUCKET="replace_with_bucket_name"
-```
-
-### Frontend (`frontend/.env.local`)
-
-```env
-NEXT_PUBLIC_API_URL="http://localhost:5000"
-NEXT_PUBLIC_GOOGLE_CLIENT_ID="replace_with_google_client_id"
-```
-
-## Local Development
-
-### 1. Prerequisites
-
-- Node.js 20+
-- npm 10+
-- Docker Desktop (recommended for Postgres)
-
-### 2. Install Dependencies
-
-```bash
+# Verify backend quality gates
 cd backend
-npm install
+npm run build
+npm audit --omit=dev --audit-level=high
 
+# Verify frontend quality gates
 cd ../frontend
-npm install
-```
-
-### 3. Start Database
-
-```bash
-docker compose up -d postgres
-```
-
-### 4. Prisma Setup
-
-```bash
-cd backend
-npx prisma generate
-npx prisma migrate deploy
-```
-
-If you are initializing from scratch in local-only workflows, use:
-
-```bash
-npx prisma db push
-```
-
-### 5. Run Applications
-
-Terminal 1:
-
-```bash
-cd backend
-npm run dev
-```
-
-Terminal 2:
-
-```bash
-cd frontend
-npm run dev
-```
-
-Services:
-
-- Frontend: `http://localhost:3000`
-- Backend API: `http://localhost:5000`
-- Health check: `http://localhost:5000/api/health`
-
-## Docker Development
-
-Start full stack:
-
-```bash
-docker compose up --build
-```
-
-Stop stack:
-
-```bash
-docker compose down
-```
-
-Stop and remove volumes:
-
-```bash
-docker compose down -v
-```
-
-## Production Build and Runtime
-
-### Backend
-
-```bash
-cd backend
+npx tsc --noEmit
 npm run build
-npm run start
+npm audit --omit=dev --audit-level=high
 ```
 
-### Frontend
+---
 
-```bash
-cd frontend
-npm run build
-npm run start
-```
+## 🤝 Contributing
 
-### Docker Images
+We welcome contributions to SyncVela! Please follow these standards:
+1. Follow **Conventional Commits** (`feat:`, `fix:`, `chore:`, `refactor:`, `docs:`).
+2. Ensure all TypeScript builds pass (`npm run build`) without compilation or linter errors.
+3. Submit feature branches targeting the `develop` branch via pull requests.
 
-Both backend and frontend Dockerfiles are multi-stage and intended for production-ready image builds.
+---
 
-Recommended production practices:
+## 📄 License
 
-- Use managed PostgreSQL instead of local container DB.
-- Inject secrets via secret manager (not plain `.env` files).
-- Put frontend/backend behind TLS termination and reverse proxy.
-- Use structured logs and centralized log aggregation.
-- Configure health checks and restart policies in your orchestrator.
-
-## Database and Prisma Operations
-
-Common commands (run in `backend`):
-
-```bash
-# Generate Prisma client
-npx prisma generate
-
-# Apply existing migrations (recommended for shared/prod environments)
-npx prisma migrate deploy
-
-# Create and apply a new migration in development
-npx prisma migrate dev --name your_change_name
-
-# View migration state
-npx prisma migrate status
-```
-
-## Security Notes
-
-- Rotate `JWT_SECRET` and `JWT_REFRESH_SECRET` regularly.
-- Restrict CORS to trusted origins (`CLIENT_URL`).
-- Use HTTPS in all non-local environments.
-- Enable secure cookie settings in production (`Secure`, `SameSite`, `HttpOnly`).
-- Enforce upload constraints (size/type validation) and malware scanning where needed.
-- Add API rate limits and abuse protection at edge + app layers.
-
-## Operational Checklist
-
-Before promoting to production:
-
-- Environment variables are configured via secret manager.
-- Prisma migrations are applied with `migrate deploy`.
-- `npm run build` passes for both frontend and backend.
-- `/api/health` is integrated with monitoring/alerting.
-- Logs and metrics are captured centrally.
-- Backup and restore strategy exists for PostgreSQL.
-- Incident rollback plan is documented.
-
-## Troubleshooting
-
-### Frontend cannot connect to backend
-
-- Verify `NEXT_PUBLIC_API_URL` in `frontend/.env.local`.
-- Verify backend is reachable on port `5000`.
-- Check CORS origin config (`CLIENT_URL`) on backend.
-
-### Socket authentication errors
-
-- Validate access token lifecycle and refresh route behavior.
-- Ensure auth cookies/headers are preserved across domains.
-
-### Prisma connection issues
-
-- Validate `DATABASE_URL` format and credentials.
-- Ensure PostgreSQL container/service is healthy.
-- Run `npx prisma migrate status` for migration state.
-
-## License
-
-This project is licensed under the MIT License.
+SyncVela is distributed under the **MIT License**. See [LICENSE](LICENSE) for details.
