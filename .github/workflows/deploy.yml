@@ -1,73 +1,148 @@
-name: SyncVela Production CI/CD
+name: SyncVela production delivery
 
 on:
   push:
-    branches:
-      - main
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: syncvela-production
+  cancel-in-progress: false
+
+env:
+  NODE_VERSION: "22"
+  BACKEND_IMAGE: ${{ secrets.DOCKER_USERNAME }}/syncvela-backend:sha-${{ github.sha }}
+  FRONTEND_IMAGE: ${{ secrets.DOCKER_USERNAME }}/syncvela-frontend:sha-${{ github.sha }}
 
 jobs:
-  build-and-push:
-    name: Build & Push Images
-    runs-on: ubuntu-latest
+  quality:
+    name: Quality and security gates
+    runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix:
+        service: [backend, frontend]
+    defaults:
+      run:
+        working-directory: ${{ matrix.service }}
     steps:
-      - name: Checkout Code
+      - name: Checkout source
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: ${{ matrix.service }}/package-lock.json
+
+      - name: Install from lockfile
+        run: npm ci
+
+      - name: Compile production artifacts
+        run: npm run build
+
+      - name: Fail on known high or critical production vulnerabilities
+        run: npm audit --omit=dev --audit-level=high
+
+  images:
+    name: Build, attest, and scan immutable images
+    runs-on: ubuntu-24.04
+    needs: quality
+    steps:
+      - name: Checkout source
         uses: actions/checkout@v4
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
-      - name: Login to Docker Hub
+      - name: Authenticate to Docker Hub
         uses: docker/login-action@v3
         with:
           username: ${{ secrets.DOCKER_USERNAME }}
           password: ${{ secrets.DOCKER_PASSWORD }}
 
-      - name: Build and Push Backend Image
-        uses: docker/build-push-action@v5
+      - name: Build and publish backend image
+        uses: docker/build-push-action@v6
         with:
-          context: ./backend
+          context: .
           file: ./backend/Dockerfile
           push: true
-          tags: ${{ secrets.DOCKER_USERNAME }}/syncvela-backend:latest
-          cache-from: type=registry,ref=${{ secrets.DOCKER_USERNAME }}/syncvela-backend:buildcache
-          cache-to: type=registry,ref=${{ secrets.DOCKER_USERNAME }}/syncvela-backend:buildcache,mode=max
+          tags: ${{ env.BACKEND_IMAGE }}
+          cache-from: type=gha,scope=syncvela-backend
+          cache-to: type=gha,mode=max,scope=syncvela-backend
+          provenance: mode=max
+          sbom: true
 
-      - name: Build and Push Frontend Image
-        uses: docker/build-push-action@v5
+      - name: Build and publish frontend image
+        uses: docker/build-push-action@v6
         with:
-          context: ./frontend
+          context: .
           file: ./frontend/Dockerfile
           push: true
+          tags: ${{ env.FRONTEND_IMAGE }}
           build-args: |
             NEXT_PUBLIC_API_URL=${{ secrets.PROD_API_URL }}
             NEXT_PUBLIC_GOOGLE_CLIENT_ID=${{ secrets.GOOGLE_CLIENT_ID }}
-          tags: ${{ secrets.DOCKER_USERNAME }}/syncvela-frontend:latest
-          cache-from: type=registry,ref=${{ secrets.DOCKER_USERNAME }}/syncvela-frontend:buildcache
-          cache-to: type=registry,ref=${{ secrets.DOCKER_USERNAME }}/syncvela-frontend:buildcache,mode=max
+          cache-from: type=gha,scope=syncvela-frontend
+          cache-to: type=gha,mode=max,scope=syncvela-frontend
+          provenance: mode=max
+          sbom: true
+
+      - name: Block high and critical backend image findings
+        uses: aquasecurity/trivy-action@v0.33.1
+        with:
+          image-ref: ${{ env.BACKEND_IMAGE }}
+          format: table
+          exit-code: "1"
+          ignore-unfixed: true
+          vuln-type: os,library
+          severity: HIGH,CRITICAL
+
+      - name: Block high and critical frontend image findings
+        uses: aquasecurity/trivy-action@v0.33.1
+        with:
+          image-ref: ${{ env.FRONTEND_IMAGE }}
+          format: table
+          exit-code: "1"
+          ignore-unfixed: true
+          vuln-type: os,library
+          severity: HIGH,CRITICAL
 
   deploy:
-    name: Deploy to Server
-    runs-on: ubuntu-latest
-    needs: build-and-push
+    name: Migrate and deploy verified SHA images
+    runs-on: ubuntu-24.04
+    needs: images
+    environment: production
     steps:
-      - name: Execute Remote SSH Commands
-        uses: appleboy/ssh-action@v1.0.3
+      - name: Deploy immutable images over SSH
+        uses: appleboy/ssh-action@v1.2.2
         with:
           host: ${{ secrets.SERVER_IP }}
           username: ${{ secrets.SERVER_USER }}
           key: ${{ secrets.SERVER_SSH_KEY }}
+          script_stop: true
           script: |
+            set -eu
             mkdir -p ~/syncvela
             cd ~/syncvela
-
-            curl -o docker-compose.prod.yml https://raw.githubusercontent.com/${{ github.repository }}/main/docker-compose.prod.yml
-
-            export DOCKER_USERNAME=${{ secrets.DOCKER_USERNAME }}
-
-            docker compose -f docker-compose.prod.yml pull
-
-            docker compose -f docker-compose.prod.yml run --rm backend npx prisma migrate deploy
-
-            docker compose -f docker-compose.prod.yml up -d --remove-orphans
-
-            docker image prune -af
+            curl --fail --silent --show-error --location \
+              -o docker-compose.prod.yml \
+              https://raw.githubusercontent.com/${{ github.repository }}/${{ github.sha }}/docker-compose.prod.yml
+            printf '%s\n' \
+              'SYNCVELA_BACKEND_IMAGE=${{ env.BACKEND_IMAGE }}' \
+              'SYNCVELA_FRONTEND_IMAGE=${{ env.FRONTEND_IMAGE }}' > .deploy-images.env
+            docker compose --env-file .deploy-images.env -f docker-compose.prod.yml pull
+            docker compose --env-file .deploy-images.env -f docker-compose.prod.yml run --rm --no-deps backend npx prisma migrate deploy
+            docker compose --env-file .deploy-images.env -f docker-compose.prod.yml up -d --remove-orphans
+            for attempt in $(seq 1 20); do
+              if docker compose --env-file .deploy-images.env -f docker-compose.prod.yml exec -T backend node -e "fetch('http://127.0.0.1:5000/api/health').then((response) => process.exit(response.ok ? 0 : 1)).catch(() => process.exit(1))"; then
+                exit 0
+              fi
+              sleep 3
+            done
+            docker compose --env-file .deploy-images.env -f docker-compose.prod.yml logs --tail=200 backend frontend
+            exit 1
