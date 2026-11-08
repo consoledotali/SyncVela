@@ -4,13 +4,12 @@ import prisma from "../config/db";
 import { authorizeRBAC } from "../utils/rbac";
 import {
   channelMemberVisibilitySchema,
-} from "./channelGovernanceSchemas";
+} from "../validators/channelValidators";
 
 export interface AuthenticatedRequest extends Request {
   user?: { userId: string };
 }
 
-// 1. CREATE NEW CHANNEL
 export const createChannel = async (
   req: AuthenticatedRequest,
   res: Response,
@@ -40,8 +39,6 @@ export const createChannel = async (
         data: { channelId: newChannel.id, userId },
       });
 
-      // PRIVATE channels: always add the workspace OWNER so they have full visibility,
-      // regardless of whether they were explicitly invited.
       if (type === "PRIVATE") {
         const owner = await tx.workspaceMember.findFirst({
           where: { workspaceId, role: "OWNER" },
@@ -57,9 +54,6 @@ export const createChannel = async (
       return newChannel;
     });
 
-    // Public channels are visible to all core workspace members. Private
-    // channels are delivered only to their explicit members (including the
-    // workspace owner that is added transactionally above).
     const io = req.app.get("socketio");
     if (io) {
       if (type === "PUBLIC") {
@@ -82,7 +76,6 @@ export const createChannel = async (
   }
 };
 
-// 2. GET ALL CHANNELS IN A WORKSPACE
 export const getWorkspaceChannels = async (
   req: AuthenticatedRequest,
   res: Response,
@@ -103,14 +96,11 @@ export const getWorkspaceChannels = async (
       return;
     }
 
-    // 🚀 THE GUEST ISOLATION ENGINE
     const channelQuery: Prisma.ChannelWhereInput = { workspaceId };
 
     if (memberRecord.role === "GUEST") {
-      // Guests only see channels they are explicitly invited to (even PUBLIC ones)
       channelQuery.members = { some: { userId, isHidden: false } };
     } else {
-      // Core members see all PUBLIC channels + PRIVATE channels they are part of
       channelQuery.OR = [
         {
           type: ChannelType.PUBLIC,
@@ -156,7 +146,6 @@ export const getWorkspaceChannels = async (
   }
 };
 
-// 3. REST API: MARK CHANNEL AS READ
 export const markChannelAsRead = async (
   req: AuthenticatedRequest,
   res: Response,
@@ -209,7 +198,6 @@ export const markChannelAsRead = async (
   }
 };
 
-// 4. INVITE USERS TO CHANNEL
 export const inviteToChannel = async (
   req: AuthenticatedRequest,
   res: Response,
@@ -289,12 +277,9 @@ export const inviteToChannel = async (
       skipDuplicates: true,
     });
 
-    // 🚀 THE REAL-TIME INVITATION ENGINE
     const io = req.app.get("socketio");
     if (io) {
-      // Har newly invited user ko specific event bhejo
       usersToAdd.forEach((id) => {
-        // user ki specific socket room mein emit kar rahe hain
         io.to(id).emit("added_to_channel", channel);
       });
     }
@@ -315,9 +300,6 @@ const emitChannelAccessUpdate = (
   io?.to(userId).emit("channel_access_updated", payload);
 };
 
-// 5. LEAVE CHANNEL
-// Public channels are hidden per user so they can be intentionally rejoined later;
-// private memberships are retained but hidden so the channel owner can restore access.
 export const leaveChannel = async (
   req: AuthenticatedRequest,
   res: Response,
@@ -358,10 +340,6 @@ export const leaveChannel = async (
   }
 };
 
-// 6. DELETE CHANNEL (WORKSPACE OWNER ONLY)
-// Deletion is deliberately governed by workspace ownership, never by the
-// historical channel creator. The database cascade removes the channel's
-// memberships, messages, attachments, reactions, and thread descendants.
 export const deleteChannel = async (
   req: AuthenticatedRequest,
   res: Response,
@@ -415,9 +393,6 @@ export const deleteChannel = async (
         });
       }
 
-      // Explicitly detach all connected tabs from the obsolete channel room.
-      // This works with the configured Socket.IO adapter and prevents future
-      // broadcasts from targeting sockets that previously viewed the channel.
       io.in(`channel_${channel.id}`).socketsLeave(`channel_${channel.id}`);
     }
 
@@ -428,7 +403,6 @@ export const deleteChannel = async (
   }
 };
 
-// 7. WORKSPACE-OWNER-MANAGED MEMBER VISIBILITY
 export const setChannelMemberVisibility = async (
   req: AuthenticatedRequest,
   res: Response,
@@ -494,7 +468,6 @@ export const setChannelMemberVisibility = async (
   }
 };
 
-// 8. GET CHANNEL MEMBERS
 export const getChannelMembers = async (
   req: AuthenticatedRequest,
   res: Response,
@@ -522,7 +495,6 @@ export const getChannelMembers = async (
       return;
     }
 
-    // 🛡️ SECURITY GATE for private channels
     if (channel.type === "PRIVATE") {
       const isMember = channel.members.some((m) => m.userId === userId);
       if (!isMember) {
@@ -541,10 +513,7 @@ export const getChannelMembers = async (
       }
     }
 
-    // 🚀 THE SMART VISIBILITY FIX FOR PUBLIC CHANNELS
-    // PUBLIC channels belong to core members automatically. GUESTs are isolated unless explicitly added.
     if (channel.type === "PUBLIC") {
-      // 1. Fetch core members (Everyone except GUESTs)
       const coreMembers = await prisma.workspaceMember.findMany({
         where: { workspaceId: channel.workspaceId, role: { not: "GUEST" } },
         include: {
@@ -554,7 +523,6 @@ export const getChannelMembers = async (
         },
       });
 
-      // 2. Fetch explicit channel members (Captures invited GUESTs)
       const explicitMembers = await prisma.channelMember.findMany({
         where: { channelId },
         include: {
@@ -585,7 +553,7 @@ export const getChannelMembers = async (
       const coreUserIds = new Set(formattedCore.map((m) => m.id));
 
       const formattedExplicit = explicitMembers
-        .filter((m) => !coreUserIds.has(m.userId)) // Prevent duplicates
+        .filter((m) => !coreUserIds.has(m.userId))
         .map((m) => {
           const role =
             explicitRoles.find((r) => r.userId === m.userId)?.role || "GUEST";
@@ -596,7 +564,6 @@ export const getChannelMembers = async (
       return;
     }
 
-    // 🛡️ Logic for PRIVATE channels (Only explicit members)
     const channelMembers = await prisma.channelMember.findMany({
       where: { channelId },
       include: {

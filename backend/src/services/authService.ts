@@ -3,7 +3,7 @@ import jwt from "jsonwebtoken";
 import prisma from "../config/db";
 import { User } from "../generated/prisma/client";
 import crypto from "crypto";
-import { validateEnterpriseEmail } from "../utils/emailValidator";
+import { validateEnterpriseEmail } from "../validators/emailValidator";
 import { sendOtpEmail, sendPasswordResetOtpEmail } from "./emailService";
 import { OAuth2Client } from "google-auth-library";
 
@@ -50,7 +50,6 @@ const tokensMatch = (storedHash: string | null, incomingToken: string) => {
   );
 };
 
-// 🛡️ SECURITY FIX: Actual logic jo data ko filter karti hai
 const sanitizeUser = (user: User): SafeUser => {
   const {
     password,
@@ -64,7 +63,6 @@ const sanitizeUser = (user: User): SafeUser => {
     googleId,
     ...safeUser
   } = user;
-  // 🚀 ACCOUNT LINKING: frontend ko batao password set hai ya nahi (bina hash expose kiye)
   return { ...safeUser, hasPassword: !!password };
 };
 
@@ -101,9 +99,8 @@ export const register = async (
   const salt = await bcrypt.genSalt(10);
   const hashedPassword = await bcrypt.hash(password, salt);
 
-  // Generate 6-digit numerical OTP
   const otp = crypto.randomInt(100000, 999999).toString();
-  const verificationExpiresAt = new Date(Date.now() + 15 * 60 * 1000); // 15 mins
+  const verificationExpiresAt = new Date(Date.now() + 15 * 60 * 1000);
 
   const newUser = await prisma.user.create({
     data: {
@@ -130,12 +127,11 @@ export const register = async (
 export const resendOtp = async (email: string) => {
   const user = await prisma.user.findUnique({ where: { email } });
 
-  // Do not leak whether the account exists.
   if (!user) throw new Error("If this email exists, a new code has been sent.");
   if (user.isEmailVerified) throw new Error("Email is already verified.");
 
   const otp = crypto.randomInt(100000, 999999).toString();
-  const verificationExpiresAt = new Date(Date.now() + 15 * 60 * 1000); // 15 mins
+  const verificationExpiresAt = new Date(Date.now() + 15 * 60 * 1000);
 
   await prisma.user.update({
     where: { id: user.id },
@@ -185,8 +181,6 @@ export const login = async (
     throw new Error("Invalid credentials");
   }
 
-  // 🚀 ACCOUNT LINKING: Google-only account (no password set yet).
-  // Bcrypt compare pe `user.password!` crash karta — guard pehle.
   if (!user.password) {
     throw new Error("GOOGLE_ACCOUNT");
   }
@@ -195,7 +189,6 @@ export const login = async (
     throw new Error("Invalid credentials");
   }
 
-  // Gatekeeper
   if (!user.isEmailVerified) {
     throw new Error("EMAIL_NOT_VERIFIED");
   }
@@ -338,8 +331,6 @@ export const executePasswordReset = async (
   };
 };
 
-// 🚀 ACCOUNT LINKING: Google user apna password set kare taake email+password login bhi kaam kare.
-// Authenticated route hai — userId JWT se aata hai, OTP email pe bheja jata hai for verification.
 export const requestSetPassword = async (userId: string) => {
   const user = await prisma.user.findUnique({ where: { id: userId } });
   if (!user) throw new Error("User not found.");

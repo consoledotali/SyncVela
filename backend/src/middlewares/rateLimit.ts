@@ -46,8 +46,6 @@ function createDistributedLimiter({
       });
     },
     store,
-    // Development can continue when Redis is intentionally unavailable.
-    // Production remains fail-closed so security controls are never silently bypassed.
     passOnStoreError: process.env.NODE_ENV !== "production",
   });
 }
@@ -71,10 +69,6 @@ export const authSessionRateLimit = createDistributedLimiter({
   limit: 120,
 });
 
-// A single message may contain up to 50 validated files. The presign endpoint
-// receives one request per file, so the limit must exceed that batch size while
-// still limiting sustained abuse. Payload size, auth, and server-side key
-// authorization remain enforced independently.
 export const uploadRateLimit = createDistributedLimiter({
   prefix: "upload",
   windowMs: 60 * 1000,

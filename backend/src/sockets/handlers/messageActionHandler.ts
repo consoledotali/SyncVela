@@ -4,7 +4,7 @@ import {
   deleteMessagePayloadSchema,
   editMessagePayloadSchema,
   reactionPayloadSchema,
-} from "../../features/chat/validation/socketSchemas";
+} from "../../validators/socketValidators";
 import {
   canAccessChannel,
   consumeSocketRateLimit,
@@ -124,7 +124,6 @@ export const registerMessageActionHandlers = (
     },
   );
 
-  // 🔴 DELETION ENGINE (WITH GOD MODE)
   socket.on("delete_message", async (payload: any, callback: any) => {
     try {
       const parsed = deleteMessagePayloadSchema.safeParse(payload);
@@ -151,10 +150,8 @@ export const registerMessageActionHandlers = (
         return;
       }
 
-      // 🚀 THE GOD MODE GATEKEEPER
       let isAuthorized = existingMessage.senderId === userId;
 
-      // Server derives moderation scope from the persisted message, never payload.roomId.
       if (!isAuthorized && existingMessage.channelId) {
         const channel = await prisma.channel.findUnique({
           where: { id: existingMessage.channelId },
@@ -170,7 +167,7 @@ export const registerMessageActionHandlers = (
           });
 
           if (member && (member.role === "OWNER" || member.role === "ADMIN")) {
-            isAuthorized = true; // God Mode Activated
+            isAuthorized = true;
           }
         }
       }
@@ -190,8 +187,8 @@ export const registerMessageActionHandlers = (
         messageId,
         roomId: existingMessage.channelId || existingMessage.conversationId,
         isChannel: !!existingMessage.channelId,
-        senderId: existingMessage.senderId, // 🛡️ STRICT FIX: Notify using original sender's ID so unread badges sync correctly
-        parentMessageId: existingMessage.parentMessageId, // 🚀 THREAD COUNT FIX: Client uses this to decrement parent's reply badge
+        senderId: existingMessage.senderId,
+        parentMessageId: existingMessage.parentMessageId,
       };
 
       await broadcastMessageUpdate(io, "message_deleted", existingMessage, broadcastData);
@@ -213,7 +210,6 @@ export const registerMessageActionHandlers = (
     }
   });
 
-  // 🟠 EDIT ENGINE (STRICTLY 'isMe' ONLY - No God Mode for editing)
   socket.on("edit_message", async (payload: any, callback: any) => {
     try {
       const parsed = editMessagePayloadSchema.safeParse(payload);
@@ -241,7 +237,6 @@ export const registerMessageActionHandlers = (
         return;
       }
 
-      // 🛡️ Edit hamesha sirf sender kar sakta hai
       if (existingMessage.senderId !== userId) {
         if (callback) callback({ error: "Unauthorized" });
         return;

@@ -34,7 +34,7 @@
 
 **SyncVela** is an open-source, production-hardened team collaboration platform designed for low-latency real-time communication, enterprise multi-tenancy, and high concurrency. Built to provide a robust open-source alternative to Slack and Discord, SyncVela enforces strict tenant isolation, distributed real-time state synchronization, and scalable asynchronous file processing.
 
-The platform is architected as a decoupled system featuring a **Next.js 15 App Router** frontend leveraging a Feature-Sliced Design (FSD) methodology, communicating via authenticated REST APIs and duplex **Socket.IO** connections backed by a **Redis Pub/Sub** distributed adapter on a high-throughput **Node.js/Express** backend.
+The platform is architected as a decoupled system featuring a **Next.js 15 App Router** frontend leveraging a clean, domain-modular production architecture (`components`, `hooks`, `store`, `types`, `utils`), communicating via authenticated REST APIs and duplex **Socket.IO** connections backed by a **Redis Pub/Sub** distributed adapter on a high-throughput **Node.js/Express** backend.
 
 ---
 
@@ -136,15 +136,17 @@ Syncvela/
 │   │   ├── schema.prisma         # Multi-tenant PostgreSQL relational data models
 │   │   └── migrations/           # Versioned migration history
 │   ├── src/
-│   │   ├── config/               # Database, Redis, CORS, and environment configurations
-│   │   ├── controllers/          # REST route handlers (Auth, Channels, Messages, Workspaces)
-│   │   ├── features/chat/        # Chat domain validation and socket payload schemas
-│   │   ├── middlewares/          # JWT auth, RBAC authorization, and Redis rate limiters
-│   │   ├── routes/               # Express API route definitions
-│   │   ├── services/             # Business logic layer (Email, S3, Workspace, Message)
-│   │   ├── sockets/              # Socket.IO connection manager, presence, and chat handlers
-│   │   ├── utils/                # JWT helpers, response formatters, and Winston logger
-│   │   └── server.ts             # Express & HTTP server bootstrap
+│   │   ├── config/               # Database, Redis, and CORS configurations
+│   │   ├── controllers/          # HTTP request orchestrators (Auth, Channel, Message, Workspace, Upload, User)
+│   │   ├── middlewares/          # JWT authentication, RBAC authorization, rate limiting & error handling
+│   │   ├── routes/               # Express modular route definitions & centralized API router
+│   │   ├── services/             # Core business logic layer (Auth, Email, Storage)
+│   │   ├── sockets/              # Socket.IO connection manager, presence, and domain event handlers
+│   │   ├── types/                # Ambient & shared TypeScript definitions
+│   │   ├── utils/                # Helper utilities (RBAC matrix authorization)
+│   │   ├── validators/           # Centralized Zod request & real-time socket payload validation
+│   │   ├── app.ts                # Express application factory & middleware pipeline
+│   │   └── server.ts             # HTTP server bootstrap, Socket.IO binding & graceful shutdown
 │   ├── Dockerfile                # Production multi-stage Docker build
 │   ├── package.json              # Backend dependencies & scripts
 │   └── tsconfig.json             # TypeScript compiler settings
@@ -155,16 +157,20 @@ Syncvela/
 │   │   │   ├── create-workspace/ # Workspace onboarding wizard
 │   │   │   ├── invite/[code]/    # Workspace invite acceptance route
 │   │   │   └── page.tsx          # Main authenticated chat application hub
-│   │   ├── components/ui/        # Reusable Shadcn UI primitives (Dialog, Button, Input, Avatar)
-│   │   ├── features/             # Feature-Sliced Architecture (FSD) modules
-│   │   │   ├── auth/             # Authentication forms, OTP handlers, session hooks
-│   │   │   ├── chat/             # Chat presentation, runtime hooks, state slices, protocol
-│   │   │   ├── profile/          # Profile modal, avatar uploader, password cards
-│   │   │   └── uploads/          # Client-side S3 presigned upload hooks
-│   │   ├── lib/                  # Axios API client, Socket.IO client, utils
-│   │   ├── providers/            # React Query, Theme, and OAuth context providers
-│   │   ├── shared/ui/            # Shared UI components (ThemeToggle)
-│   │   └── store/                # Root Zustand store integrating feature slices
+│   │   ├── components/           # Domain-modular UI components
+│   │   │   ├── auth/             # Authentication screen (AuthScreen)
+│   │   │   ├── channels/         # Channel list, creation & invite modals
+│   │   │   ├── chat/             # Message bubbles, composer, thread drawer & header
+│   │   │   ├── direct-messages/  # 1:1 conversation list & online indicators
+│   │   │   ├── layout/           # Sidebar, user footer, ThemeToggle & workspace switcher
+│   │   │   ├── profile/          # AvatarUploader & SetPasswordCard (profile modal)
+│   │   │   ├── ui/               # Reusable Shadcn UI primitives
+│   │   │   └── workspace/        # Workspace hub, dropdown & member management
+│   │   ├── hooks/                # Custom React hooks (realtime, auth, upload, channels)
+│   │   ├── utils/                # apiClient, attachmentUtils, avatarUtils, inviteUtils, otpUtils, socket validation & cn
+│   │   ├── providers/            # React Query, Theme, Toast & Socket context providers
+│   │   ├── store/                # Zustand root store & domain state slices
+│   │   └── types/                # Strongly-typed data models & socket contracts
 │   ├── Dockerfile                # Pinned Alpine Next.js 15 standalone container
 │   ├── package.json              # Frontend dependencies & scripts
 │   └── tsconfig.json             # TypeScript compiler configuration

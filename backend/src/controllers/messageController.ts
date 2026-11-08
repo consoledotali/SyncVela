@@ -1,11 +1,10 @@
 import { Response } from "express";
 import prisma from "../config/db";
 import { AuthenticatedRequest } from "./channelController";
-import { signMessageAttachments, signAttachments } from "../utils/s3";
+import { signMessageAttachments, signAttachments } from "../services/storageService";
 
 const reactionInclude = { select: { emoji: true, userId: true } } as const;
 
-// PUBLIC channels are workspace-visible; PRIVATE channels additionally need an invite.
 const canAccessChannel = async (userId: string, channelId: string): Promise<boolean> => {
   const channel = await prisma.channel.findUnique({
     where: { id: channelId },

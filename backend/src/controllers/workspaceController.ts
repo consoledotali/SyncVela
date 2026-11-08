@@ -1,9 +1,8 @@
 import { Response } from "express";
 import prisma from "../config/db";
 import { AuthenticatedRequest } from "./channelController";
-import { workspaceOwnershipTransferSchema } from "./workspaceGovernanceSchemas";
+import { workspaceOwnershipTransferSchema } from "../validators/workspaceValidators";
 
-// 1. CREATE WORKSPACE
 export const createWorkspace = async (
   req: AuthenticatedRequest,
   res: Response,
@@ -45,7 +44,6 @@ export const createWorkspace = async (
   }
 };
 
-// 2. GET USER'S WORKSPACES
 export const getUserWorkspaces = async (
   req: AuthenticatedRequest,
   res: Response,
@@ -81,7 +79,6 @@ export const getUserWorkspaces = async (
   }
 };
 
-// 3. JOIN WORKSPACE VIA INVITE CODE
 export const joinWorkspace = async (
   req: AuthenticatedRequest,
   res: Response,
@@ -140,7 +137,6 @@ export const joinWorkspace = async (
   }
 };
 
-// 4. GET WORKSPACE MEMBERS
 export const getWorkspaceMembers = async (
   req: AuthenticatedRequest,
   res: Response,
@@ -167,7 +163,6 @@ export const getWorkspaceMembers = async (
       return;
     }
 
-    // Security check: requester must be a member of this workspace
     const isRequesterMember = workspace.members.some(
       (m) => m.userId === currentUserId,
     );
@@ -176,7 +171,6 @@ export const getWorkspaceMembers = async (
       return;
     }
 
-    // Fetch all 1:1 conversations for current user in THIS workspace
     const conversations = await prisma.conversation.findMany({
       where: {
         workspaceId,
@@ -241,7 +235,6 @@ export const getWorkspaceMembers = async (
   }
 };
 
-// 5. DELETE WORKSPACE
 export const deleteWorkspace = async (
   req: AuthenticatedRequest,
   res: Response,
@@ -281,7 +274,6 @@ export const deleteWorkspace = async (
   }
 };
 
-// 6. UPDATE WORKSPACE MEMBER ROLE
 export const updateWorkspaceMemberRole = async (
   req: AuthenticatedRequest,
   res: Response,
@@ -306,7 +298,6 @@ export const updateWorkspaceMemberRole = async (
       return;
     }
 
-    // EDGE CASE: Stop user from modifying their own role
     if (currentUserId === targetUserId) {
       res.status(400).json({ error: "You cannot change your own role." });
       return;
@@ -336,20 +327,15 @@ export const updateWorkspaceMemberRole = async (
       include: { user: { select: { id: true, name: true } } },
     });
 
-    // 🚀 THE QUARANTINE ENGINE FIX
     let revokedChannelIds: string[] = [];
 
     if (newRole === "GUEST") {
-      // 🚨 DEMOTED TO GUEST: Strip access from ALL channels (Public & Private).
-      // This enforces strict quarantine. The Admin must re-invite them manually.
       const allChannels = await prisma.channel.findMany({
         where: { workspaceId },
         select: { id: true },
       });
       revokedChannelIds = allChannels.map((c) => c.id);
     } else if (newRole === "MEMBER") {
-      // 🚨 DEMOTED TO MEMBER: Only strip access from PRIVATE channels.
-      // Members inherently have access to all PUBLIC channels.
       const privateChannels = await prisma.channel.findMany({
         where: { workspaceId, type: "PRIVATE" },
         select: { id: true },
@@ -365,18 +351,13 @@ export const updateWorkspaceMemberRole = async (
 
     const io = req.app.get("socketio");
     if (io) {
-      // Broadcast the role change to the workspace
       io.to(`workspace_${workspaceId}`).emit("member_role_updated", {
         workspaceId,
         userId: targetUserId,
         newRole,
       });
 
-      // Force the demoted user's UI to wipe the revoked channels instantly
       if (revokedChannelIds.length > 0) {
-        // Hum purana frontend event name "private_channels_revoked" hi use kar rahe hain
-        // kyunke frontend filter logic explicitly private/public check nahi karti,
-        // bas ID match kar ke channel sidebar se uda deti hai.
         io.to(targetUserId).emit("private_channels_revoked", {
           channelIds: revokedChannelIds,
         });
@@ -393,7 +374,6 @@ export const updateWorkspaceMemberRole = async (
   }
 };
 
-// 7. TRANSFER WORKSPACE OWNERSHIP
 export const transferWorkspaceOwnership = async (
   req: AuthenticatedRequest,
   res: Response,
@@ -466,7 +446,6 @@ export const transferWorkspaceOwnership = async (
   }
 };
 
-// 8. KICK MEMBER FROM WORKSPACE
 export const removeWorkspaceMember = async (
   req: AuthenticatedRequest,
   res: Response,

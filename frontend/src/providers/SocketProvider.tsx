@@ -5,8 +5,8 @@ import { io, Socket } from "socket.io-client";
 import { useQueryClient } from "@tanstack/react-query";
 import { useRouter } from "next/navigation";
 import { useAuthStore } from "@/src/store/authStore";
-import { refreshAccessToken } from "@/src/lib/authFetch";
-import { useChatStore } from "@/src/features/chat/state";
+import { refreshAccessToken } from "@/src/utils/apiClient";
+import { useChatStore } from "@/src/store/chatStore";
 
 interface SocketContextType {
   socket: Socket | null;
@@ -48,7 +48,6 @@ export const SocketProvider = ({ children }: { children: React.ReactNode }) => {
       },
     );
 
-    // 🟢 CONNECTION & FLUSH ENGINE
     socketInstance.on("connect", () => {
       setIsConnected(true);
       socketInstance.emit("presence:heartbeat");
@@ -72,7 +71,6 @@ export const SocketProvider = ({ children }: { children: React.ReactNode }) => {
       }, 1000);
     });
 
-    // 🟡 SILENT TOKEN REFRESH INTERCEPTOR
     socketInstance.on("connect_error", async (err) => {
       const errorMessage = err.message.toLowerCase();
 
@@ -102,8 +100,6 @@ export const SocketProvider = ({ children }: { children: React.ReactNode }) => {
     const presenceHeartbeat = () => socketInstance.emit("presence:heartbeat");
     const heartbeatInterval = window.setInterval(presenceHeartbeat, 30_000);
 
-    // Socket messages carry domain notifications, not a second source of truth.
-    // TanStack Query refetches authoritative server data after a relevant event.
     const invalidateWorkspace = () => {
       void queryClient.invalidateQueries({ queryKey: ["workspaces"] });
       void queryClient.invalidateQueries({ queryKey: ["channels"] });
@@ -115,7 +111,6 @@ export const SocketProvider = ({ children }: { children: React.ReactNode }) => {
       setSocket(socketInstance);
     }, 0);
 
-    // 🚀 CLEARED DEAD & REDUNDANT EVENT LISTENERS
     return () => {
       window.clearTimeout(socketStateTask);
 

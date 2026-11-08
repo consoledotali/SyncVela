@@ -7,9 +7,6 @@ datasource db {
   provider = "postgresql"
 }
 
-// ------------------------------------------------------
-// ENUMS
-// ------------------------------------------------------
 enum ParticipantRole {
   ADMIN
   MEMBER
@@ -32,9 +29,6 @@ enum ChannelType {
   PRIVATE
 }
 
-// ------------------------------------------------------
-// USER MODEL
-// ------------------------------------------------------
 model User {
   id                    String       @id @default(cuid())
   email                 String       @unique
@@ -54,7 +48,6 @@ model User {
   isDeleted             Boolean      @default(false)
   deletedAt             DateTime?
 
-  // RELATIONS
   conversations    Participant[]
   messages         Message[]
   workspaces       WorkspaceMember[]
@@ -66,9 +59,6 @@ model User {
   @@map("users")
 }
 
-// ------------------------------------------------------
-// WORKSPACE ARCHITECTURE (Multi-Tenant Engine)
-// ------------------------------------------------------
 model Workspace {
   id         String   @id @default(cuid())
   name       String
@@ -102,9 +92,6 @@ model WorkspaceMember {
   @@map("workspace_members")
 }
 
-// ------------------------------------------------------
-// CHANNEL ARCHITECTURE
-// ------------------------------------------------------
 model Channel {
   id        String      @id @default(cuid())
   name      String
@@ -147,9 +134,6 @@ model ChannelMember {
   @@map("channel_members")
 }
 
-// ------------------------------------------------------
-// DM CONVERSATION MODELS
-// ------------------------------------------------------
 model Conversation {
   id            String   @id @default(cuid())
   name          String?
@@ -186,9 +170,6 @@ model Participant {
   @@map("participants")
 }
 
-// ------------------------------------------------------
-// MESSAGE MODEL (Enterprise Slack Architecture)
-// ------------------------------------------------------
 model Message {
   id         String   @id @default(cuid())
   sequenceId Int      @unique @default(autoincrement())
@@ -207,7 +188,6 @@ model Message {
   attachments Attachment[]
   reactions   MessageReaction[]
 
-  // 🚀 THE THREADING ENGINE (Self-Referential Engine)
   parentMessageId String?
   parentMessage   Message?  @relation("MessageToReplies", fields: [parentMessageId], references: [id], onDelete: Cascade)
   replies         Message[] @relation("MessageToReplies")
@@ -215,13 +195,10 @@ model Message {
   @@index([conversationId])
   @@index([channelId])
   @@index([senderId])
-  @@index([parentMessageId]) // 🚀 Fast Lookup for rendering threaded replies
+  @@index([parentMessageId])
   @@map("messages")
 }
 
-// ------------------------------------------------------
-// ATTACHMENT MODEL (Rich Metadata Storage)
-// ------------------------------------------------------
 model Attachment {
   id        String   @id @default(cuid())
   url       String

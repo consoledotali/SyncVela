@@ -5,8 +5,8 @@ import { useParams, useRouter } from "next/navigation";
 import { useAuthStore } from "@/src/store/authStore";
 import { Loader2, ShieldCheck, XCircle, UserCheck } from "lucide-react";
 import { Button } from "@/src/components/ui/button";
-import { authFetch } from "@/src/lib/authFetch";
-import { rememberInviteDestination } from "@/src/features/auth/navigation/inviteContinuation";
+import { authFetch } from "@/src/utils/apiClient";
+import { rememberInviteDestination } from "@/src/utils/inviteUtils";
 
 export default function InvitePage() {
   const params = useParams();
@@ -46,9 +46,6 @@ export default function InvitePage() {
           const data = await response.json();
           setStatus("success");
 
-          // 🚀 THE ACTIVE WORKSPACE OVERRIDE FIX
-          // Jab join ho jaye, toh aggressively local storage update kar do
-          // taake useWorkspaceInit isay pick kar le.
           if (data.workspaceId) {
             localStorage.setItem("lastActiveWorkspaceId", data.workspaceId);
           }
@@ -62,7 +59,6 @@ export default function InvitePage() {
           if (err.error === "You are already in this workspace.") {
             setStatus("already_member");
 
-            // 🚀 Force selection if they are already a member
             if (err.workspaceId) {
               localStorage.setItem("lastActiveWorkspaceId", err.workspaceId);
             }

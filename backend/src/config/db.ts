@@ -7,8 +7,6 @@ if (!connectionString) {
   throw new Error("DATABASE_URL is required before initializing Prisma");
 }
 
-// Prisma 7 uses the PostgreSQL driver adapter. Keep one client per process so
-// development reloads and production workers do not create unnecessary pools.
 const prismaClientSingleton = () => {
   const adapter = new PrismaPg({
     connectionString,

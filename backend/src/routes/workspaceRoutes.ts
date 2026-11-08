@@ -14,7 +14,6 @@ import { requirePermission } from "../middlewares/rbacMiddleware";
 
 const router = Router();
 
-// Protect all workspace routes
 router.use(authMiddleware);
 
 router.post("/", createWorkspace);

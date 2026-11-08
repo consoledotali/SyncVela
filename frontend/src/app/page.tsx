@@ -5,12 +5,12 @@ import { useRouter } from "next/navigation";
 import { QueryProvider } from "@/src/providers/QueryProvider";
 import { SocketProvider } from "@/src/providers/SocketProvider";
 import { useAuthStore } from "@/src/store/authStore";
-import WorkspaceHub from "@/src/features/chat/presentation/workspace/WorkspaceHub";
-import { useWorkspaceInit } from "@/src/features/chat/runtime/workspace/useWorkspaceInit";
-import { useChannelFetcher } from "@/src/features/chat/runtime/channels/useChannelFetcher";
-import { useChannelHistory } from "@/src/features/chat/runtime/channels/useChannelHistory";
-import { useChatSocketEvents } from "@/src/features/chat/runtime/realtime/useChatSocketEvents";
-import { useWorkspaceMembers } from "@/src/features/chat/runtime/workspace/useWorkspaceMembers";
+import WorkspaceHub from "@/src/components/workspace/WorkspaceHub";
+import { useWorkspaceInit } from "@/src/hooks/useWorkspaceInit";
+import { useChannelFetcher } from "@/src/hooks/useChannelFetcher";
+import { useChannelHistory } from "@/src/hooks/useChannelHistory";
+import { useChatSocketEvents } from "@/src/hooks/useChatSocketEvents";
+import { useWorkspaceMembers } from "@/src/hooks/useWorkspaceMembers";
 
 function WorkspaceRuntime() {
   useWorkspaceInit();
