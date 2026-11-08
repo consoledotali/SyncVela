@@ -1,7 +1,6 @@
 import { MemberRole } from "../generated/prisma/client";
 import prisma from "../config/db";
 
-// 1. Define all granular operations available in the system
 export type Permission =
   | "VIEW_WORKSPACE"
   | "CREATE_CHANNEL"
@@ -12,7 +11,6 @@ export type Permission =
   | "MANAGE_MESSAGES"
   | "CREATE_MESSAGE";
 
-// 2. 🚀 THE STATIC POLICY MATRIX (Zero DB Overhead)
 const ROLE_PERMISSIONS: Record<MemberRole, Permission[]> = {
   OWNER: [
     "VIEW_WORKSPACE",
@@ -45,7 +43,6 @@ interface RBACResult {
   role?: MemberRole;
 }
 
-// 3. The Centralized Authorizer
 export const authorizeRBAC = async (
   userId: string,
   workspaceId: string,

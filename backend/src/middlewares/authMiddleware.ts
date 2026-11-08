@@ -2,14 +2,10 @@ import { Request, Response, NextFunction } from "express";
 import { Socket } from "socket.io";
 import jwt, { TokenExpiredError } from "jsonwebtoken";
 
-// ------------------------------------------------------
-// 1. STRICT TYPE DEFINITIONS (Zero 'any' allowed)
-// ------------------------------------------------------
 export interface JwtPayload {
   userId: string;
 }
 
-// Express Request object ko strictly augment kiya (Type Overriding)
 declare global {
   namespace Express {
     interface Request {
@@ -22,10 +18,6 @@ export interface AuthenticatedSocket extends Socket {
   user?: JwtPayload;
 }
 
-// ------------------------------------------------------
-// 2. CORE ENGINE: Single Source of Truth
-// ------------------------------------------------------
-// Token verify karne ka logic strictly ek jagah band kar diya
 const verifyAccessToken = (token: string): JwtPayload => {
   const secret = process.env.JWT_SECRET;
   if (!secret) {
@@ -34,9 +26,6 @@ const verifyAccessToken = (token: string): JwtPayload => {
   return jwt.verify(token, secret) as JwtPayload;
 };
 
-// ------------------------------------------------------
-// 3. HTTP API GATEKEEPER (Express)
-// ------------------------------------------------------
 export const authMiddleware = (
   req: Request,
   res: Response,
@@ -51,11 +40,9 @@ export const authMiddleware = (
       return;
     }
 
-    // Ab typescript rote ga nahi, kyunke humne Request interface augment kar diya hai
     req.user = verifyAccessToken(token);
     next();
   } catch (error) {
-    // Frontend ko explicit reason dena zaroori hai taake wo Refresh Token hit kar sake
     if (error instanceof TokenExpiredError) {
       res.status(401).json({ error: "TOKEN_EXPIRED" });
     } else {
@@ -64,9 +51,6 @@ export const authMiddleware = (
   }
 };
 
-// ------------------------------------------------------
-// 4. WEBSOCKET GATEKEEPER (Socket.io)
-// ------------------------------------------------------
 export const socketAuthMiddleware = (
   socket: AuthenticatedSocket,
   next: (err?: Error) => void,
@@ -81,7 +65,7 @@ export const socketAuthMiddleware = (
   }
 
   try {
-    socket.user = verifyAccessToken(token); // Using the same core engine
+    socket.user = verifyAccessToken(token);
     console.log(
       `✅ Socket Authenticated: User ${socket.user.userId} connected`,
     );

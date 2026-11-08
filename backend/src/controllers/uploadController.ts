@@ -1,9 +1,9 @@
 import { Request, Response } from "express";
 import { randomUUID } from "crypto";
 import { z } from "zod";
-import { createUploadUrl, getUploadHeaders } from "../utils/s3";
+import { createUploadUrl, getUploadHeaders } from "../services/storageService";
 
-const MAX_FILE_SIZE = 100 * 1024 * 1024; // 100MB Strict Limit
+const MAX_FILE_SIZE = 100 * 1024 * 1024;
 const MAX_AVATAR_SIZE = 5 * 1024 * 1024;
 
 const normalizeContentType = (contentType: string): string => {
@@ -65,10 +65,6 @@ export const generatePresignedUrl = async (
       res.status(400).json({ error: "Avatars must be PNG, JPEG, or WebP images up to 5MB." });
       return;
     }
-    // Chat attachments are stored in the private bucket and served only through
-    // authorized download URLs. That allows normal collaboration formats such as
-    // video, audio, archives, source files, and browser-unknown binaries without
-    // making the upload bucket public or trusting a client-provided storage key.
     if (kind === "attachment" && !MIME_TYPE_PATTERN.test(contentType)) {
       res.status(400).json({
         error:
@@ -81,7 +77,6 @@ export const generatePresignedUrl = async (
     const isPublic = kind === "avatar";
     const folder = isPublic ? `avatars/${userId}` : `chat-attachments/${userId}`;
 
-    // Keys are fully server-generated and names are only a non-authoritative suffix.
     const safeName = filename.replace(/[^a-zA-Z0-9.-]/g, "").slice(-120) || "upload";
     const uniqueFileKey = `${folder}/${randomUUID()}-${safeName}`;
 

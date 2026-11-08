@@ -10,7 +10,6 @@ export const requirePermission = (requiredPermission: Permission) => {
     try {
       const userId = req.user?.userId;
 
-      // Workspace ID route params se aaye ya request body se
       const workspaceId =
         req.params.workspaceId || req.body.workspaceId || req.query.workspaceId;
 
@@ -22,7 +21,6 @@ export const requirePermission = (requiredPermission: Permission) => {
         return;
       }
 
-      // Check against DB and Role Matrix
       const authResult = await authorizeRBAC(
         userId,
         workspaceId,
@@ -37,7 +35,6 @@ export const requirePermission = (requiredPermission: Permission) => {
         return;
       }
 
-      // Agar authorized hai, toh aagay janay do
       next();
     } catch (error) {
       console.error("❌ RBAC Middleware Crash:", error);

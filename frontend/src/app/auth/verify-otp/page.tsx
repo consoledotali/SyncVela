@@ -21,8 +21,8 @@ import {
   isValidOtp,
   maskEmail,
   normalizeOtp,
-} from "@/src/features/auth/otpVerification";
-import { verifyOtpSession } from "@/src/features/auth/verifyOtpSession";
+  verifyOtpSession,
+} from "@/src/utils/otpUtils";
 
 const apiUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000";
 const RESEND_COOLDOWN_SECONDS = 60;

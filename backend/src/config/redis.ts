@@ -41,11 +41,6 @@ export async function connectRedis(): Promise<boolean> {
   return connectionPromise;
 }
 
-/**
- * Used by Redis-backed middleware during module initialization. It guarantees
- * that the first command is never sent through a closed client and that
- * concurrent initializers share one connection attempt.
- */
 export async function ensureRedisReady(): Promise<boolean> {
   return connectRedis();
 }

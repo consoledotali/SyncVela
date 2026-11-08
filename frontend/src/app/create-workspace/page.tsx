@@ -5,9 +5,9 @@ import { useRouter } from "next/navigation";
 import { Loader2, Briefcase, Sparkles } from "lucide-react";
 import { Button } from "@/src/components/ui/button";
 import { Input } from "@/src/components/ui/input";
-import { useChatStore } from "@/src/features/chat/state";
+import { useChatStore } from "@/src/store/chatStore";
 import { useAuthStore } from "@/src/store/authStore";
-import { authFetch } from "@/src/lib/authFetch";
+import { authFetch } from "@/src/utils/apiClient";
 import { toast } from "sonner";
 
 export default function CreateWorkspacePage() {
@@ -36,20 +36,16 @@ export default function CreateWorkspacePage() {
       if (response.ok) {
         const newWorkspace = await response.json();
 
-        // 🚀 THE STORE INJECTION
         setWorkspaces([newWorkspace]);
 
-        // 🚀 THE MEMORY WIPE (Safety Check)
         useChatStore.getState().setChannels([]);
         useChatStore.getState().setUsers([]);
         useChatStore.getState().setMessages([]);
 
-        // 🚀 SET ACTIVE STATE
         setActiveChannelId(null);
         setActiveWorkspaceId(newWorkspace.id);
         localStorage.setItem("lastActiveWorkspaceId", newWorkspace.id);
 
-        // 🚀 THE ESCAPE: Unlock the user and send them to the dashboard
         router.push("/");
       } else {
         const err = await response.json();

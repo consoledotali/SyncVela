@@ -24,19 +24,16 @@ function getErrorMessage(error: unknown, fallback: string) {
 export default function ForgotPasswordPage() {
   const router = useRouter();
 
-  // States for two-step process
   const [step, setStep] = useState<1 | 2>(1);
   const [email, setEmail] = useState("");
   const [otp, setOtp] = useState("");
   const [newPassword, setNewPassword] = useState("");
 
-  // UI States
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState("");
   const [successMsg, setSuccessMsg] = useState("");
   const [showPassword, setShowPassword] = useState(false);
 
-  // Step 1: Request OTP
   const handleRequestOTP = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsLoading(true);
@@ -55,7 +52,6 @@ export default function ForgotPasswordPage() {
       if (res.status < 200 || res.status >= 300)
         throw new Error(data?.error || "Failed to request reset.");
 
-      // Success, move to step 2
       setSuccessMsg("If this account exists, a 6-digit OTP has been sent.");
       setStep(2);
     } catch (err: unknown) {
@@ -65,7 +61,6 @@ export default function ForgotPasswordPage() {
     }
   };
 
-  // Step 2: Submit New Password
   const handleResetPassword = async (e: React.FormEvent) => {
     e.preventDefault();
     if (otp.length !== 6) {
@@ -88,7 +83,6 @@ export default function ForgotPasswordPage() {
       if (res.status < 200 || res.status >= 300)
         throw new Error(data?.error || "Failed to reset password.");
 
-      // Success, redirect to login
       toast.success("Password reset successfully. You can now log in.");
       router.push("/auth/login");
     } catch (err: unknown) {
@@ -128,7 +122,6 @@ export default function ForgotPasswordPage() {
           )}
 
           {step === 1 ? (
-            // 🔴 STEP 1 FORM: Ask for Email
             <form onSubmit={handleRequestOTP} className="space-y-4">
               <div className="space-y-2">
                 <Label htmlFor="email">Email</Label>
@@ -158,7 +151,6 @@ export default function ForgotPasswordPage() {
               </Button>
             </form>
           ) : (
-            // 🔴 STEP 2 FORM: Ask for OTP & New Password
             <form onSubmit={handleResetPassword} className="space-y-4">
               <div className="space-y-2">
                 <Label htmlFor="otp">6-Digit Code</Label>

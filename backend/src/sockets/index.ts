@@ -32,9 +32,13 @@ export const initSocket = async (server: HttpServer) => {
     io.adapter(createAdapter(pubClient, subClient));
     console.log("[socket-redis-adapter] Redis Pub/Sub adapter enabled");
   } else if (process.env.NODE_ENV === "production") {
-    throw new Error("Redis Pub/Sub must be ready before Socket.IO starts in production.");
+    throw new Error(
+      "Redis Pub/Sub must be ready before Socket.IO starts in production.",
+    );
   } else {
-    console.warn("[socket-redis-adapter] Redis unavailable; running single-instance only");
+    console.warn(
+      "[socket-redis-adapter] Redis unavailable; running single-instance only",
+    );
   }
 
   io.use(socketAuthMiddleware);
@@ -51,7 +55,11 @@ export const initSocket = async (server: HttpServer) => {
       });
       if (memberships.length === 0) return [];
       const peers = await prisma.workspaceMember.findMany({
-        where: { workspaceId: { in: memberships.map((membership) => membership.workspaceId) } },
+        where: {
+          workspaceId: {
+            in: memberships.map((membership) => membership.workspaceId),
+          },
+        },
         select: { userId: true },
         distinct: ["userId"],
       });
@@ -67,8 +75,9 @@ export const initSocket = async (server: HttpServer) => {
         ...new Set(
           workspaceSockets
             .map((workspaceSocket) => workspaceSocket.data.userId)
-            .filter((connectedUserId): connectedUserId is string =>
-              typeof connectedUserId === "string",
+            .filter(
+              (connectedUserId): connectedUserId is string =>
+                typeof connectedUserId === "string",
             ),
         ),
       ];
@@ -96,19 +105,32 @@ export const initSocket = async (server: HttpServer) => {
       memberships.map(({ workspaceId }) => `workspace_${workspaceId}`),
     );
     if (redisClient?.isOpen) {
-      await redisClient.set(`syncvela:presence:${userId}`, "online", { EX: 90 });
+      await redisClient.set(`syncvela:presence:${userId}`, "online", {
+        EX: 90,
+      });
     }
     await emitPresenceToSharedWorkspaces("userOnline");
 
     socket.on("presence:heartbeat", async () => {
-      if (!(await consumeSocketRateLimit(userId, "presence-heartbeat", 40, 60_000))) return;
+      if (
+        !(await consumeSocketRateLimit(
+          userId,
+          "presence-heartbeat",
+          40,
+          60_000,
+        ))
+      )
+        return;
       if (redisClient?.isReady) {
-        await redisClient.set(`syncvela:presence:${userId}`, "online", { EX: 90 });
+        await redisClient.set(`syncvela:presence:${userId}`, "online", {
+          EX: 90,
+        });
       }
     });
 
     socket.on("requestOnlineUsers", async (workspaceId: unknown) => {
-      if (!(await consumeSocketRateLimit(userId, "presence-list", 30, 60_000))) return;
+      if (!(await consumeSocketRateLimit(userId, "presence-list", 30, 60_000)))
+        return;
       if (typeof workspaceId !== "string") return;
       if (!(await isWorkspaceMember(userId, workspaceId))) return;
       socket.emit("getOnlineUsers", {
@@ -127,7 +149,9 @@ export const initSocket = async (server: HttpServer) => {
           onlineUserIds?: string[];
         }) => void,
       ) => {
-        if (!(await consumeSocketRateLimit(userId, "join-workspace", 30, 60_000))) {
+        if (
+          !(await consumeSocketRateLimit(userId, "join-workspace", 30, 60_000))
+        ) {
           callback?.({ error: "Too many join requests" });
           return;
         }

@@ -1,7 +1,7 @@
 import prisma from "../config/db";
 import type { Request, Response } from "express";
 import { AuthenticatedRequest } from "./channelController";
-import { createAvatarDownloadUrl } from "../utils/s3";
+import { createAvatarDownloadUrl } from "../services/storageService";
 
 const isValidAvatarKey = (fileKey: unknown): fileKey is string =>
   typeof fileKey === "string" &&
@@ -41,7 +41,6 @@ export const getUsersForSidebar = async (
       return;
     }
 
-    // 1. Fetch Active Conversations WITH current user's participant state
     const activeConversations = await prisma.conversation.findMany({
       where: {
         workspaceId,
@@ -67,7 +66,6 @@ export const getUsersForSidebar = async (
       },
     });
 
-    // 2. 🛡️ HYDRATION ENGINE: Extract Users AND Calculate Exact Unread Counts
     const activeUsersWithMeta = await Promise.all(
       activeConversations.map(async (c) => {
         const targetParticipant = c.participants.find(
@@ -103,15 +101,12 @@ export const getUsersForSidebar = async (
       (user): user is NonNullable<typeof user> =>
         user !== null && user.id !== userId,
     );
-    // A user can have legacy duplicate 1:1 conversation rows. The sidebar is
-    // peer-centric, so retain only the newest conversation for each peer.
     const activeUsersById = new Map(
       validActiveUsers.map((user) => [user.id, user]),
     );
     const uniqueActiveUsers = [...activeUsersById.values()];
     const activeUserIds = uniqueActiveUsers.map((user) => user.id);
 
-    // 3. Other Users in THIS workspace (No active chat yet)
     const otherUsers = await prisma.user.findMany({
       where: {
         isEmailVerified: true,
@@ -131,7 +126,6 @@ export const getUsersForSidebar = async (
       isActiveChat: false,
     }));
 
-    // 5. Combine and Send
     res.status(200).json([...uniqueActiveUsers, ...formattedOtherUsers]);
   } catch (error) {
     console.error("❌ Error fetching users:", error);
@@ -139,7 +133,6 @@ export const getUsersForSidebar = async (
   }
 };
 
-// 🚀 THE AVATAR UPDATE ENGINE
 export const updateAvatar = async (
   req: AuthenticatedRequest,
   res: Response,
@@ -195,9 +188,6 @@ export const updateAvatar = async (
   }
 };
 
-// This route is deliberately public because user avatars are profile-visible.
-// It is registered before authentication middleware and only accepts the
-// server-generated avatar key namespace; it never exposes private attachments.
 export const serveAvatarObject = async (
   req: Request,
   res: Response,

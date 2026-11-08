@@ -4,8 +4,8 @@ import {
   channelIdPayloadSchema,
   channelMessagePayloadSchema,
   socketIdentifierSchema,
-} from "../../features/chat/validation/socketSchemas";
-import { signAttachments } from "../../utils/s3";
+} from "../../validators/socketValidators";
+import { signAttachments } from "../../services/storageService";
 import { authorizeRBAC } from "../../utils/rbac";
 import { canAccessChannel, consumeSocketRateLimit } from "../socketSecurity";
 
@@ -77,15 +77,12 @@ export const registerChannelHandlers = (
       }
       const textData = parsed.data.text || parsed.data.content;
 
-      // 🚀 THREADING ENGINE: Extract parentMessageId from frontend payload
       const { channelId, attachments, tempId, parentMessageId } = parsed.data;
 
       const hasText = textData && textData.trim() !== "";
       const hasAttachments =
         Array.isArray(attachments) && attachments.length > 0;
 
-      // 🛡️ AUTHORIZATION: Sender ko is channel ka member hona chahiye.
-      // PUBLIC channel ke liye workspace-member kaafi, PRIVATE ke liye ChannelMember.
       const channel = await canAccessChannel(userId, channelId);
       if (!channel) {
         callback?.({ error: "Channel access denied" });
@@ -98,7 +95,6 @@ export const registerChannelHandlers = (
           channelId,
           senderId: userId,
 
-          // 🚀 THE THREAD LINK: Null if normal message, ID if it's a reply
           parentMessageId: parentMessageId || null,
 
           attachments: hasAttachments
@@ -119,7 +115,6 @@ export const registerChannelHandlers = (
         },
       });
 
-      // Replace stored keys with short-lived signed URLs before broadcasting.
       const signedMessage = {
         ...message,
         attachments: await signAttachments(message.attachments),

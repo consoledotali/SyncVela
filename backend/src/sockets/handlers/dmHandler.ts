@@ -5,8 +5,8 @@ import {
   directMessagePayloadSchema,
   roomIdPayloadSchema,
   socketIdentifierSchema,
-} from "../../features/chat/validation/socketSchemas";
-import { signAttachments } from "../../utils/s3";
+} from "../../validators/socketValidators";
+import { signAttachments } from "../../services/storageService";
 import { consumeSocketRateLimit } from "../socketSecurity";
 
 const getAuthorizedDirectConversation = async (
@@ -31,7 +31,6 @@ export const registerDMHandlers = (
   socket: Socket,
   userId: string,
 ) => {
-  // 1. JOIN PRIVATE CHAT (WITH IDENTITY SHIELD & WORKSPACE ISOLATION)
   socket.on("joinPrivateChat", async (rawPayload: unknown) => {
     try {
       let targetUserId = "";
@@ -62,7 +61,6 @@ export const registerDMHandlers = (
         return;
       }
 
-      // If workspaceId is provided, verify both users belong to this workspace
       if (workspaceId) {
         const [userMembership, targetMembership] = await Promise.all([
           prisma.workspaceMember.findUnique({
@@ -111,7 +109,6 @@ export const registerDMHandlers = (
     }
   });
 
-  // 2. SEND PRIVATE MESSAGE (WITH CRASH BARRIER & THREADING)
   socket.on("sendPrivateMessage", async (payload: any, callback: any) => {
     try {
       const parsed = directMessagePayloadSchema.safeParse(payload);
@@ -144,8 +141,6 @@ export const registerDMHandlers = (
       });
 
       if (!targetExists) {
-        // A stale sidebar entry can outlive a deleted account. This is a
-        // recoverable client-state condition, not a server exception.
         console.warn(
           `[DM] Recipient unavailable; removing stale direct-message entry for ${targetUserId}.`,
         );
@@ -227,7 +222,6 @@ export const registerDMHandlers = (
         },
       });
 
-      // Replace stored keys with short-lived signed URLs before broadcasting.
       const signedMessage = {
         ...savedMessage,
         attachments: await signAttachments(savedMessage.attachments),
@@ -239,7 +233,6 @@ export const registerDMHandlers = (
         workspaceId: conversation.workspaceId,
       };
 
-      // All recipients are loaded from the persisted conversation, never the client payload.
       conversation.participants.forEach((participant) => {
         io.to(participant.userId).emit("receiveMessage", broadcastPayload);
       });
@@ -258,7 +251,6 @@ export const registerDMHandlers = (
     }
   });
 
-  // 3. MARK AS READ (WITH CONTEXT SHIELD)
   socket.on(
     "markAsRead",
     async (payload: unknown) => {

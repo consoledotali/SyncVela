@@ -104,7 +104,6 @@ export const loginUser = async (req: Request, res: Response): Promise<void> => {
       return;
     }
 
-    // 🚀 ACCOUNT LINKING: Google-only account tried email+password login.
     if (errorMessage === "GOOGLE_ACCOUNT") {
       res.status(403).json({ error: errorMessage, email: fallbackEmail });
       return;
@@ -159,8 +158,6 @@ export const refreshAccessToken = async (
     } = await authService.refresh(refreshToken);
     setRefreshTokenCookie(res, rotatedRefreshToken);
 
-    // Access tokens remain memory-only. The HttpOnly refresh cookie restores
-    // both the token and safe user profile after a hard browser refresh.
     res.status(200).json({ accessToken, user });
   } catch (error: unknown) {
     clearRefreshTokenCookie(res);
@@ -219,7 +216,6 @@ export const resetPasswordHandler = async (
   }
 };
 
-// 🚀 ACCOUNT LINKING: authenticated Google user requests an OTP to set a password.
 export const requestSetPasswordHandler = async (
   req: Request,
   res: Response,
