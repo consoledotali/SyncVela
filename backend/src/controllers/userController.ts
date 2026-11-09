@@ -1,6 +1,6 @@
-import prisma from "../config/db";
+import prisma from "../config/dbConfig";
 import type { Request, Response } from "express";
-import { AuthenticatedRequest } from "./channelController";
+import { AuthenticatedRequest } from "../types/authTypes";
 import { createAvatarDownloadUrl } from "../services/storageService";
 
 const isValidAvatarKey = (fileKey: unknown): fileKey is string =>

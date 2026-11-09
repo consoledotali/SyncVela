@@ -1,7 +1,7 @@
-"use client";
+﻿"use client";
 
 import { useEffect } from "react";
-import { refreshAccessToken } from "@/src/utils/apiClient";
+import { refreshAccessToken } from "@/src/utils/apiUtils";
 import { useAuthStore } from "@/src/store/authStore";
 
 export function AuthSessionProvider({ children }: { children: React.ReactNode }) {

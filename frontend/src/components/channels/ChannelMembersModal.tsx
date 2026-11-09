@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import React, { useEffect, useMemo, useState } from "react";
 import { X, Users, Loader2, ShieldAlert, Search, Trash2 } from "lucide-react";
@@ -8,7 +8,7 @@ import {
   AvatarImage,
 } from "@/src/components/ui/avatar";
 import { useAuthStore } from "@/src/store/authStore";
-import { authFetch } from "@/src/utils/apiClient";
+import { authFetch } from "@/src/utils/apiUtils";
 import { useChatStore } from "@/src/store/chatStore";
 
 interface ChannelMembersModalProps {

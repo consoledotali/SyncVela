@@ -1,7 +1,8 @@
-import { Request, Response } from "express";
+import { Response } from "express";
 import { randomUUID } from "crypto";
 import { z } from "zod";
 import { createUploadUrl, getUploadHeaders } from "../services/storageService";
+import { AuthenticatedRequest } from "../types/authTypes";
 
 const MAX_FILE_SIZE = 100 * 1024 * 1024;
 const MAX_AVATAR_SIZE = 5 * 1024 * 1024;
@@ -35,7 +36,7 @@ const AVATAR_TYPES = new Set(["image/png", "image/jpeg", "image/webp"]);
 const MIME_TYPE_PATTERN = /^[a-z0-9!#$&^_.+-]+\/[a-z0-9!#$&^_.+-]+$/;
 
 export const generatePresignedUrl = async (
-  req: Request,
+  req: AuthenticatedRequest,
   res: Response,
 ): Promise<void> => {
   try {

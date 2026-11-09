@@ -1,14 +1,14 @@
-import { useEffect } from "react";
+﻿import { useEffect } from "react";
 import { useChatStore } from "@/src/store/chatStore";
 import { useAuthStore } from "@/src/store/authStore";
-import { authFetch } from "@/src/utils/apiClient";
+import { authFetch } from "@/src/utils/apiUtils";
 import type { Socket } from "socket.io-client";
+import type { Channel } from "@/src/types/channelTypes";
 import type {
   Attachment,
-  Channel,
   Message,
   MessageReaction,
-} from "@/src/types/chat";
+} from "@/src/types/messageTypes";
 
 type ChannelSocketMessage = {
   id: string;

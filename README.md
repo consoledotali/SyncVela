@@ -4,7 +4,7 @@
 
 **Enterprise-Grade, Multi-Tenant Real-Time Collaboration & Team Messaging Platform**
 
-*Engineered with Next.js 15, Node.js 22, Socket.IO, Redis Pub/Sub, PostgreSQL, Prisma ORM, and MinIO/S3.*
+_Engineered with Next.js 15, Node.js 22, Socket.IO, Redis Pub/Sub, PostgreSQL, Prisma ORM, and MinIO/S3._
 
 [![Next.js](https://img.shields.io/badge/Next.js-15.0-black?style=for-the-badge&logo=next.js)](https://nextjs.org/)
 [![Node.js](https://img.shields.io/badge/Node.js-22.x-339933?style=for-the-badge&logo=node.js)](https://nodejs.org/)
@@ -89,21 +89,24 @@ flowchart TD
 ```
 
 ### Architectural Principles
-* **Zero-Trust Multi-Tenancy**: Every workspace is strictly isolated. All database queries, socket rooms, channel lookups, and direct messages enforce tenant boundaries (`workspaceId`) at both the API and database levels.
-* **Horizontal Scalability via Redis Pub/Sub**: Socket.IO nodes are stateless. The `@socket.io/redis-adapter` relays real-time events across any number of clustered backend instances.
-* **Direct-to-S3 Presigned Media Pipeline**: Files and avatars bypass backend application memory entirely. The server generates cryptographically signed, short-lived PUT URLs, allowing the browser to stream media directly to S3/MinIO with MIME validation.
-* **Graceful Optimistic UI**: Frontend chat interactions (messages, reactions, status updates) apply optimistically to local Zustand state while syncing with TanStack Query and Socket.IO fallbacks.
+
+- **Zero-Trust Multi-Tenancy**: Every workspace is strictly isolated. All database queries, socket rooms, channel lookups, and direct messages enforce tenant boundaries (`workspaceId`) at both the API and database levels.
+- **Horizontal Scalability via Redis Pub/Sub**: Socket.IO nodes are stateless. The `@socket.io/redis-adapter` relays real-time events across any number of clustered backend instances.
+- **Direct-to-S3 Presigned Media Pipeline**: Files and avatars bypass backend application memory entirely. The server generates cryptographically signed, short-lived PUT URLs, allowing the browser to stream media directly to S3/MinIO with MIME validation.
+- **Graceful Optimistic UI**: Frontend chat interactions (messages, reactions, status updates) apply optimistically to local Zustand state while syncing with TanStack Query and Socket.IO fallbacks.
 
 ---
 
 ## ✨ Key Features
 
 ### 🏢 Multi-Tenant Workspace Isolation
+
 - Dynamic workspace creation with unique slugs, member roles, and avatar branding.
 - Secure, shareable workspace invitation links with cryptographic verification.
 - **Enterprise Governance**: Workspace ownership transfer, role modification (`OWNER`, `ADMIN`, `MEMBER`, `GUEST`), and member eviction protocols.
 
 ### 💬 Real-Time Channels & Direct Messaging
+
 - **Public & Private Channels**: Fine-grained access control ensuring private channels are strictly restricted to invited members.
 - **1:1 Direct Messages**: Workspace-scoped peer-to-peer messaging preventing cross-workspace contamination.
 - **Message Threading**: Nested discussion threads with real-time reply counters and parent message context preservation.
@@ -111,11 +114,13 @@ flowchart TD
 - **Real-Time Presence & Typing Indicators**: Ephemeral user typing states and presence heartbeats backed by Redis TTL-expiry.
 
 ### 📦 Media Upload & Object Storage
+
 - Direct client-to-storage uploads using **AWS S3 / MinIO** presigned URLs.
 - Dual-bucket segregation: Public bucket for user/workspace avatars; private bucket for secure channel attachments.
 - Automatic image lightbox previews, download links, and inline document renderers.
 
 ### 🛡️ Enterprise Security & Resilience
+
 - **Authentication**: Email/Password with Resend OTP email verification, Google OAuth 2.0 integration, and HttpOnly SameSite JWT refresh token rotation.
 - **Rate Limiting**: Distributed Redis token-bucket rate limiting defending authentication endpoints and socket event emitters against abuse.
 - **Data Integrity**: Prisma schema migrations guaranteeing foreign-key cascading and composite indexing for high-speed lookups.
@@ -133,17 +138,15 @@ Syncvela/
 │       └── deploy.yml            # Automated CI/CD pipeline (Lint, Build, Trivy Security Scan, Docker)
 ├── backend/
 │   ├── prisma/
-│   │   ├── schema.prisma         # Multi-tenant PostgreSQL relational data models
-│   │   └── migrations/           # Versioned migration history
+│   │   └── schema.prisma         # Multi-tenant PostgreSQL relational data models
 │   ├── src/
-│   │   ├── config/               # Database, Redis, and CORS configurations
-│   │   ├── controllers/          # HTTP request orchestrators (Auth, Channel, Message, Workspace, Upload, User)
-│   │   ├── middlewares/          # JWT authentication, RBAC authorization, rate limiting & error handling
+│   │   ├── config/               # Infrastructure, Redis, DB, CORS & rate limit configurations (corsConfig, dbConfig, rateLimitConfig, rbacConfig, redisConfig)
+│   │   ├── controllers/          # HTTP request orchestrators (Auth, Channel, Error, Message, Upload, User, Workspace)
+│   │   ├── middlewares/          # Route authentication & authorization guards (authMiddleware, rbacMiddleware)
 │   │   ├── routes/               # Express modular route definitions & centralized API router
 │   │   ├── services/             # Core business logic layer (Auth, Email, Storage)
-│   │   ├── sockets/              # Socket.IO connection manager, presence, and domain event handlers
-│   │   ├── types/                # Ambient & shared TypeScript definitions
-│   │   ├── utils/                # Helper utilities (RBAC matrix authorization)
+│   │   ├── sockets/              # Real-time WebSocket server, presence, and domain handlers (handlers/, socketSecurity, socketServer)
+│   │   ├── types/                # Domain-modular TypeScript contracts (authTypes, channelTypes, commonTypes, rbacTypes, socketTypes, storageTypes, workspaceTypes)
 │   │   ├── validators/           # Centralized Zod request & real-time socket payload validation
 │   │   ├── app.ts                # Express application factory & middleware pipeline
 │   │   └── server.ts             # HTTP server bootstrap, Socket.IO binding & graceful shutdown
@@ -160,17 +163,15 @@ Syncvela/
 │   │   ├── components/           # Domain-modular UI components
 │   │   │   ├── auth/             # Authentication screen (AuthScreen)
 │   │   │   ├── channels/         # Channel list, creation & invite modals
-│   │   │   ├── chat/             # Message bubbles, composer, thread drawer & header
-│   │   │   ├── direct-messages/  # 1:1 conversation list & online indicators
-│   │   │   ├── layout/           # Sidebar, user footer, ThemeToggle & workspace switcher
+│   │   │   ├── chat/             # Message bubbles, composer, thread drawer, header & direct messages list
 │   │   │   ├── profile/          # AvatarUploader & SetPasswordCard (profile modal)
-│   │   │   ├── ui/               # Reusable Shadcn UI primitives
-│   │   │   └── workspace/        # Workspace hub, dropdown & member management
+│   │   │   ├── ui/               # Reusable Shadcn UI primitives & ThemeToggle
+│   │   │   └── workspace/        # WorkspaceHub, Sidebar, CurrentUserFooter, dropdown & member management
 │   │   ├── hooks/                # Custom React hooks (realtime, auth, upload, channels)
-│   │   ├── utils/                # apiClient, attachmentUtils, avatarUtils, inviteUtils, otpUtils, socket validation & cn
 │   │   ├── providers/            # React Query, Theme, Toast & Socket context providers
 │   │   ├── store/                # Zustand root store & domain state slices
-│   │   └── types/                # Strongly-typed data models & socket contracts
+│   │   ├── types/                # Domain-modular TypeScript contracts (authTypes, channelTypes, messageTypes, workspaceTypes, storeTypes)
+│   │   └── utils/                # Pure stateless utilities (apiUtils, attachmentUtils, avatarUtils, inviteUtils, otpUtils, socketUtils, styleUtils)
 │   ├── Dockerfile                # Pinned Alpine Next.js 15 standalone container
 │   ├── package.json              # Frontend dependencies & scripts
 │   └── tsconfig.json             # TypeScript compiler configuration
@@ -184,6 +185,7 @@ Syncvela/
 ## 🚀 Quick Start
 
 ### Prerequisites
+
 - **Node.js**: `v22.x` or later
 - **npm**: `v10.x` or later
 - **Docker & Docker Compose**: For running PostgreSQL, Redis, and MinIO locally
@@ -191,12 +193,14 @@ Syncvela/
 ---
 
 ### Step 1: Clone the Repository
+
 ```bash
 git clone https://github.com/consoledotali/SyncVela.git
 cd SyncVela
 ```
 
 ### Step 2: Spin Up Infrastructure Containers
+
 Start local PostgreSQL (port 5432), Redis (port 6379), and MinIO (ports 9000/9001) with automatic bucket initialization:
 
 ```bash
@@ -208,6 +212,7 @@ docker compose up -d
 ---
 
 ### Step 3: Configure Environment Variables
+
 Copy the template files for both the backend and frontend:
 
 ```bash
@@ -218,13 +223,14 @@ cp backend/.env.example backend/.env
 cp frontend/.env.example frontend/.env.local
 ```
 
-*(See [Environment Variables](#-environment-variables) below for field descriptions).*
+_(See [Environment Variables](#-environment-variables) below for field descriptions)._
 
 ---
 
 ### Step 4: Setup & Run Backend
 
 In your first terminal:
+
 ```bash
 cd backend
 
@@ -240,6 +246,7 @@ npx prisma migrate deploy
 # Start backend in development mode
 npm run dev
 ```
+
 The backend server will start on `http://localhost:5000`.
 
 ---
@@ -247,6 +254,7 @@ The backend server will start on `http://localhost:5000`.
 ### Step 5: Setup & Run Frontend
 
 In your second terminal:
+
 ```bash
 cd frontend
 
@@ -256,6 +264,7 @@ npm ci
 # Start frontend in development mode
 npm run dev
 ```
+
 The Next.js application will open on `http://localhost:3000`.
 
 ---
@@ -264,35 +273,35 @@ The Next.js application will open on `http://localhost:3000`.
 
 ### Backend Configuration (`backend/.env`)
 
-| Variable | Description | Default / Example | Required |
-|---|---|---|:---:|
-| `PORT` | Port number for the Express server | `5000` | No |
-| `NODE_ENV` | Runtime environment mode | `development` | Yes |
-| `CLIENT_URL` | Allowed origin for CORS & cookie credentials | `http://localhost:3000` | Yes |
-| `FRONTEND_URL` | Application URL used for generated email invite links | `http://localhost:3000` | Yes |
-| `CORS_ORIGINS` | Comma-delimited list of accepted origins | `http://localhost:3000` | Yes |
-| `DATABASE_URL` | PostgreSQL connection string | `postgresql://postgres:rootpassword@localhost:5432/syncvela?schema=public` | Yes |
-| `DATABASE_POOL_MAX` | Maximum connections in PostgreSQL pool | `20` | No |
-| `REDIS_URL` | Redis connection URL for Pub/Sub & rate limiting | `redis://localhost:6379` | Yes |
-| `JWT_SECRET` | Secret key for signing Access Tokens (min 32 chars) | `your-jwt-access-secret-32-chars` | Yes |
-| `JWT_REFRESH_SECRET` | Secret key for signing Refresh Tokens (min 32 chars) | `your-jwt-refresh-secret-32-chars` | Yes |
-| `GOOGLE_CLIENT_ID` | Google OAuth 2.0 Client ID for server validation | `your-client-id.apps.googleusercontent.com` | No |
-| `RESEND_API_KEY` | Resend API Key for sending transactional OTPs & invites | `re_xxxxxxxxxxxxxxxx` | No |
-| `OBJECT_STORAGE_ENDPOINT` | S3 API endpoint for direct file access | `http://localhost:9000` | Yes |
-| `OBJECT_STORAGE_PUBLIC_ENDPOINT` | S3 public URL exposed to client browsers | `http://localhost:9000` | Yes |
-| `OBJECT_STORAGE_REGION` | S3 region identifier | `us-east-1` | Yes |
-| `OBJECT_STORAGE_ACCESS_KEY` | S3 access key / MinIO root user | `syncvela_local_minio` | Yes |
-| `OBJECT_STORAGE_SECRET_KEY` | S3 secret key / MinIO root password | `SyncVelaMinIO!2026Local` | Yes |
-| `OBJECT_STORAGE_BUCKET` | Private bucket for channel attachments | `syncvela-attachments` | Yes |
-| `OBJECT_STORAGE_PUBLIC_BUCKET`| Public bucket for user/workspace avatars | `syncvela-avatars` | Yes |
-| `OBJECT_STORAGE_FORCE_PATH_STYLE` | Path-style routing for S3/MinIO (`true`/`false`) | `true` | Yes |
+| Variable                          | Description                                             | Default / Example                                                          | Required |
+| --------------------------------- | ------------------------------------------------------- | -------------------------------------------------------------------------- | :------: |
+| `PORT`                            | Port number for the Express server                      | `5000`                                                                     |    No    |
+| `NODE_ENV`                        | Runtime environment mode                                | `development`                                                              |   Yes    |
+| `CLIENT_URL`                      | Allowed origin for CORS & cookie credentials            | `http://localhost:3000`                                                    |   Yes    |
+| `FRONTEND_URL`                    | Application URL used for generated email invite links   | `http://localhost:3000`                                                    |   Yes    |
+| `CORS_ORIGINS`                    | Comma-delimited list of accepted origins                | `http://localhost:3000`                                                    |   Yes    |
+| `DATABASE_URL`                    | PostgreSQL connection string                            | `postgresql://postgres:rootpassword@localhost:5432/syncvela?schema=public` |   Yes    |
+| `DATABASE_POOL_MAX`               | Maximum connections in PostgreSQL pool                  | `20`                                                                       |    No    |
+| `REDIS_URL`                       | Redis connection URL for Pub/Sub & rate limiting        | `redis://localhost:6379`                                                   |   Yes    |
+| `JWT_SECRET`                      | Secret key for signing Access Tokens (min 32 chars)     | `your-jwt-access-secret-32-chars`                                          |   Yes    |
+| `JWT_REFRESH_SECRET`              | Secret key for signing Refresh Tokens (min 32 chars)    | `your-jwt-refresh-secret-32-chars`                                         |   Yes    |
+| `GOOGLE_CLIENT_ID`                | Google OAuth 2.0 Client ID for server validation        | `your-client-id.apps.googleusercontent.com`                                |    No    |
+| `RESEND_API_KEY`                  | Resend API Key for sending transactional OTPs & invites | `re_xxxxxxxxxxxxxxxx`                                                      |    No    |
+| `OBJECT_STORAGE_ENDPOINT`         | S3 API endpoint for direct file access                  | `http://localhost:9000`                                                    |   Yes    |
+| `OBJECT_STORAGE_PUBLIC_ENDPOINT`  | S3 public URL exposed to client browsers                | `http://localhost:9000`                                                    |   Yes    |
+| `OBJECT_STORAGE_REGION`           | S3 region identifier                                    | `us-east-1`                                                                |   Yes    |
+| `OBJECT_STORAGE_ACCESS_KEY`       | S3 access key / MinIO root user                         | `syncvela_local_minio`                                                     |   Yes    |
+| `OBJECT_STORAGE_SECRET_KEY`       | S3 secret key / MinIO root password                     | `SyncVelaMinIO!2026Local`                                                  |   Yes    |
+| `OBJECT_STORAGE_BUCKET`           | Private bucket for channel attachments                  | `syncvela-attachments`                                                     |   Yes    |
+| `OBJECT_STORAGE_PUBLIC_BUCKET`    | Public bucket for user/workspace avatars                | `syncvela-avatars`                                                         |   Yes    |
+| `OBJECT_STORAGE_FORCE_PATH_STYLE` | Path-style routing for S3/MinIO (`true`/`false`)        | `true`                                                                     |   Yes    |
 
 ### Frontend Configuration (`frontend/.env.local`)
 
-| Variable | Description | Default / Example | Required |
-|---|---|---|:---:|
-| `NEXT_PUBLIC_API_URL` | Public backend API & WebSocket base URL | `http://localhost:5000` | Yes |
-| `NEXT_PUBLIC_GOOGLE_CLIENT_ID` | Google OAuth 2.0 Web Client ID for OAuth buttons | `your-client-id.apps.googleusercontent.com` | No |
+| Variable                       | Description                                      | Default / Example                           | Required |
+| ------------------------------ | ------------------------------------------------ | ------------------------------------------- | :------: |
+| `NEXT_PUBLIC_API_URL`          | Public backend API & WebSocket base URL          | `http://localhost:5000`                     |   Yes    |
+| `NEXT_PUBLIC_GOOGLE_CLIENT_ID` | Google OAuth 2.0 Web Client ID for OAuth buttons | `your-client-id.apps.googleusercontent.com` |    No    |
 
 ---
 
@@ -300,36 +309,38 @@ The Next.js application will open on `http://localhost:3000`.
 
 SyncVela establishes an authenticated duplex WebSocket connection via Socket.IO:
 
-| Socket Event | Direction | Payload Parameters | Description |
-|---|:---:|---|---|
-| `join_workspace` | Client ➔ Server | `{ workspaceId: string }` | Joins user to the workspace broadcast room after RBAC validation. |
-| `join_channel` | Client ➔ Server | `{ channelId: string }` | Joins a public or private channel room if membership check passes. |
-| `send_message` | Client ➔ Server | `{ channelId?, recipientId?, content, attachments?, parentMessageId? }` | Emits a channel message, direct message, or thread reply. |
-| `new_message` | Server ➔ Client | `MessageObject` | Broadcasts new message to active room participants with sender metadata. |
-| `add_reaction` | Client ➔ Server | `{ messageId: string, emoji: string }` | Records an emoji reaction and broadcasts update to conversation room. |
-| `reaction_updated` | Server ➔ Client | `{ messageId: string, reactions: Reaction[] }` | Notifies clients to optimistically sync reaction counters. |
-| `typing_start` | Client ➔ Server | `{ conversationId: string, isChannel: boolean }` | Triggers typing indicator to other room members via Redis TTL store. |
-| `typing_stop` | Client ➔ Server | `{ conversationId: string, isChannel: boolean }` | Clears active typing status for current user. |
-| `user_presence` | Server ➔ Client | `{ userId: string, status: "online" \| "offline" }` | Emitted when a user disconnects or heartbeat expires. |
+| Socket Event       |    Direction    | Payload Parameters                                                      | Description                                                              |
+| ------------------ | :-------------: | ----------------------------------------------------------------------- | ------------------------------------------------------------------------ |
+| `join_workspace`   | Client ➔ Server | `{ workspaceId: string }`                                               | Joins user to the workspace broadcast room after RBAC validation.        |
+| `join_channel`     | Client ➔ Server | `{ channelId: string }`                                                 | Joins a public or private channel room if membership check passes.       |
+| `send_message`     | Client ➔ Server | `{ channelId?, recipientId?, content, attachments?, parentMessageId? }` | Emits a channel message, direct message, or thread reply.                |
+| `new_message`      | Server ➔ Client | `MessageObject`                                                         | Broadcasts new message to active room participants with sender metadata. |
+| `add_reaction`     | Client ➔ Server | `{ messageId: string, emoji: string }`                                  | Records an emoji reaction and broadcasts update to conversation room.    |
+| `reaction_updated` | Server ➔ Client | `{ messageId: string, reactions: Reaction[] }`                          | Notifies clients to optimistically sync reaction counters.               |
+| `typing_start`     | Client ➔ Server | `{ conversationId: string, isChannel: boolean }`                        | Triggers typing indicator to other room members via Redis TTL store.     |
+| `typing_stop`      | Client ➔ Server | `{ conversationId: string, isChannel: boolean }`                        | Clears active typing status for current user.                            |
+| `user_presence`    | Server ➔ Client | `{ userId: string, status: "online" \| "offline" }`                     | Emitted when a user disconnects or heartbeat expires.                    |
 
 ---
 
 ## 🔒 Security & Governance
 
 ### Role-Based Access Control (RBAC) Matrix
+
 Permissions are strictly evaluated on both the REST API layer and the WebSocket gateway:
 
-| Capability | Workspace OWNER | Workspace ADMIN | Workspace MEMBER | Workspace GUEST |
-|---|:---:|:---:|:---:|:---:|
-| Transfer Workspace Ownership | ✅ | ❌ | ❌ | ❌ |
-| Delete Workspace | ✅ | ❌ | ❌ | ❌ |
-| Evict Members / Manage Roles | ✅ | ✅ | ❌ | ❌ |
-| Create / Delete Public Channels | ✅ | ✅ | ❌ | ❌ |
-| Create / Manage Private Channels | ✅ | ✅ | ✅ | ❌ |
-| Send Messages & File Attachments | ✅ | ✅ | ✅ | ✅ (Assigned channels only) |
-| Add / Remove Emoji Reactions | ✅ | ✅ | ✅ | ✅ |
+| Capability                       | Workspace OWNER | Workspace ADMIN | Workspace MEMBER |       Workspace GUEST       |
+| -------------------------------- | :-------------: | :-------------: | :--------------: | :-------------------------: |
+| Transfer Workspace Ownership     |       ✅        |       ❌        |        ❌        |             ❌              |
+| Delete Workspace                 |       ✅        |       ❌        |        ❌        |             ❌              |
+| Evict Members / Manage Roles     |       ✅        |       ✅        |        ❌        |             ❌              |
+| Create / Delete Public Channels  |       ✅        |       ✅        |        ❌        |             ❌              |
+| Create / Manage Private Channels |       ✅        |       ✅        |        ✅        |             ❌              |
+| Send Messages & File Attachments |       ✅        |       ✅        |        ✅        | ✅ (Assigned channels only) |
+| Add / Remove Emoji Reactions     |       ✅        |       ✅        |        ✅        |             ✅              |
 
 ### Zero-Trust Hardening
+
 1. **Payload Schema Validation**: All socket emissions and REST payloads are validated at runtime against strict schemas (rejecting prototype pollution and unexpected parameters).
 2. **Distributed Rate Limiting**: Redis token buckets prevent brute-force login attempts and socket message floods.
 3. **CORS & Cookie Policies**: Express uses strict origin checking with `credentials: true` and `SameSite: Lax` / `SameSite: None` flags matching production deployment topologies.
@@ -351,6 +362,7 @@ flowchart LR
 ```
 
 ### Verification Commands
+
 To test service compilation, type safety, and security audits locally before submitting changes:
 
 ```bash
@@ -371,6 +383,7 @@ npm audit --omit=dev --audit-level=high
 ## 🤝 Contributing
 
 We welcome contributions to SyncVela! Please follow these standards:
+
 1. Follow **Conventional Commits** (`feat:`, `fix:`, `chore:`, `refactor:`, `docs:`).
 2. Ensure all TypeScript builds pass (`npm run build`) without compilation or linter errors.
 3. Submit feature branches targeting the `develop` branch via pull requests.

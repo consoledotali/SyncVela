@@ -27,29 +27,9 @@ export function getPostVerificationDestination(): string {
   return "/";
 }
 
-type AuthenticatedUser = {
-  id: string;
-  name: string;
-  email: string;
-  avatarUrl?: string | null;
-  provider?: "LOCAL" | "GOOGLE";
-  hasPassword?: boolean;
-};
+import type { AuthenticatedUser, VerifyOtpSessionOptions } from "@/src/types/authTypes";
 
-type OtpResponse = {
-  status: number;
-  data: unknown;
-};
-
-type OtpRequest = (url: string, payload: { email: string; otp: string }) => Promise<OtpResponse>;
-
-export type VerifyOtpSessionOptions = {
-  apiUrl: string;
-  email: string;
-  otp: string;
-  request: OtpRequest;
-  onAuthenticated: (user: AuthenticatedUser, accessToken: string) => void;
-};
+export type { VerifyOtpSessionOptions };
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null;

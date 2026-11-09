@@ -1,4 +1,5 @@
 import { Request, Response } from "express";
+import { AuthenticatedRequest } from "../types/authTypes";
 import * as authService from "../services/authService";
 
 const setRefreshTokenCookie = (res: Response, token: string): void => {
@@ -217,7 +218,7 @@ export const resetPasswordHandler = async (
 };
 
 export const requestSetPasswordHandler = async (
-  req: Request,
+  req: AuthenticatedRequest,
   res: Response,
 ): Promise<void> => {
   try {
@@ -230,7 +231,7 @@ export const requestSetPasswordHandler = async (
 };
 
 export const confirmSetPasswordHandler = async (
-  req: Request,
+  req: AuthenticatedRequest,
   res: Response,
 ): Promise<void> => {
   try {

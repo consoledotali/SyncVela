@@ -1,14 +1,11 @@
-import { useEffect } from "react";
+﻿import { useEffect } from "react";
 import { useChatStore } from "@/src/store/chatStore";
 import { useAuthStore } from "@/src/store/authStore";
-import { authFetch } from "@/src/utils/apiClient";
+import { authFetch } from "@/src/utils/apiUtils";
 import { useRouter } from "next/navigation";
 import type { Socket } from "socket.io-client";
-import type {
-  Channel,
-  SidebarUser,
-  WorkspaceRole,
-} from "@/src/types/chat";
+import type { Channel } from "@/src/types/channelTypes";
+import type { SidebarUser, WorkspaceRole } from "@/src/types/workspaceTypes";
 import { toast } from "sonner";
 
 type MemberJoinedPayload = { workspaceId: string; user: SidebarUser };
@@ -26,7 +23,7 @@ export const useWorkspaceEvents = (socket: Socket | null) => {
       if (activeWorkspaceId === data.workspaceId) {
         const isDuplicate = users.some((u) => u.id === data.user.id);
         if (!isDuplicate) {
-          console.log("🟢 Real-time User Joined:", data.user.name);
+          console.log("ðŸŸ¢ Real-time User Joined:", data.user.name);
           setUsers([...users, data.user]);
         }
       }
@@ -45,7 +42,7 @@ export const useWorkspaceEvents = (socket: Socket | null) => {
           const previousRole = state.currentUserRole;
 
           console.log(
-            `⚡ Security Cleared: My role updated from ${previousRole} to: ${data.newRole}`,
+            `âš¡ Security Cleared: My role updated from ${previousRole} to: ${data.newRole}`,
           );
           state.setCurrentUserRole(data.newRole);
 

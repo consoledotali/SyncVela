@@ -1,7 +1,7 @@
 import "dotenv/config";
 import http from "http";
 import { app } from "./app";
-import { connectRedis, disconnectRedis, requireRedisInProduction } from "./config/redis";
+import { connectRedis, disconnectRedis, requireRedisInProduction } from "./config/redisConfig";
 import { initSocket } from "./sockets/index";
 
 requireRedisInProduction();

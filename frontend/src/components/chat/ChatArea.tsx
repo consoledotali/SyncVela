@@ -1,15 +1,15 @@
-"use client";
+﻿"use client";
 
 import React, { useRef, useEffect, useLayoutEffect, useState } from "react";
 import { useChatStore } from "@/src/store/chatStore";
-import { Message } from "@/src/types/chat";
+import type { Message } from "@/src/types/messageTypes";
 import { useAuthStore } from "@/src/store/authStore";
 import ChatInput from "./ChatInput";
 import EmptyState from "./EmptyState";
 import ChatHeader from "./ChatHeader";
 import { MessageList } from "./MessageList";
 import ThreadDrawer from "./ThreadDrawer";
-import { authFetch } from "@/src/utils/apiClient";
+import { authFetch } from "@/src/utils/apiUtils";
 
 interface HistoricalMessagePayload {
   id: string;
@@ -256,7 +256,7 @@ export default function ChatArea() {
           isPrependingRef.current = false;
         }
       } catch (err) {
-        console.error("❌ Failed to load historical messages:", err);
+        console.error("âŒ Failed to load historical messages:", err);
         isPrependingRef.current = false;
       }
       setIsLoadingMore(false);

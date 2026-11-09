@@ -1,5 +1,5 @@
 import { StateCreator } from "zustand";
-import { ChatStore, WorkspaceSlice } from "@/src/types/chat";
+import type { ChatStore, WorkspaceSlice } from "@/src/types/storeTypes";
 
 export const createWorkspaceSlice: StateCreator<
   ChatStore,

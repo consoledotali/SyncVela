@@ -1,5 +1,6 @@
 import { StateCreator } from "zustand";
-import { ChatStore, Message, MessageSlice } from "@/src/types/chat";
+import type { ChatStore, MessageSlice } from "@/src/types/storeTypes";
+import type { Message } from "@/src/types/messageTypes";
 
 export const createMessageSlice: StateCreator<
   ChatStore,

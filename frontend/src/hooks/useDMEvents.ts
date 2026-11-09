@@ -1,17 +1,17 @@
-import { useEffect } from "react";
+﻿import { useEffect } from "react";
 import { useChatStore } from "@/src/store/chatStore";
 import { useAuthStore } from "@/src/store/authStore";
-import { authFetch } from "@/src/utils/apiClient";
+import { authFetch } from "@/src/utils/apiUtils";
 import type { Socket } from "socket.io-client";
 import type {
   Attachment,
   Message,
   MessageReaction,
-} from "@/src/types/chat";
+} from "@/src/types/messageTypes";
 import {
   createDeliveryReceiptPayload,
   createRoomReceiptPayload,
-} from "@/src/utils/socket/socketPayloads";
+} from "@/src/utils/socketUtils";
 
 type DmSocketMessage = {
   id: string;
@@ -268,7 +268,7 @@ export const useDMEvents = (socket: Socket | null) => {
           }
         }
       } catch (error) {
-        console.error("❌ Failed to fetch direct messages:", error);
+        console.error("âŒ Failed to fetch direct messages:", error);
       } finally {
         if (isMounted) setLoading(false);
       }

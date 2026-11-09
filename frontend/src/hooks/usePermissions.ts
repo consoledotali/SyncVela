@@ -1,13 +1,7 @@
 import { useChatStore } from "@/src/store/chatStore";
+import type { Permission } from "@/src/types/workspaceTypes";
 
-export type Permission =
-  | "VIEW_WORKSPACE"
-  | "CREATE_CHANNEL"
-  | "DELETE_CHANNEL"
-  | "INVITE_USERS"
-  | "DELETE_WORKSPACE"
-  | "MANAGE_WORKSPACE"
-  | "MANAGE_MESSAGES";
+export type { Permission };
 
 const ROLE_PERMISSIONS: Record<string, Permission[]> = {
   OWNER: [

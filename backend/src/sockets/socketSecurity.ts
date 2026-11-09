@@ -1,5 +1,5 @@
-import prisma from "../config/db";
-import { redisClient } from "../config/redis";
+import prisma from "../config/dbConfig";
+import { redisClient } from "../config/redisConfig";
 
 export async function isWorkspaceMember(userId: string, workspaceId: string) {
   return prisma.workspaceMember.findUnique({

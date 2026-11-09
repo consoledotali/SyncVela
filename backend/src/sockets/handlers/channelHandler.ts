@@ -1,12 +1,12 @@
 import { Server, Socket } from "socket.io";
-import prisma from "../../config/db";
+import prisma from "../../config/dbConfig";
 import {
   channelIdPayloadSchema,
   channelMessagePayloadSchema,
   socketIdentifierSchema,
 } from "../../validators/socketValidators";
 import { signAttachments } from "../../services/storageService";
-import { authorizeRBAC } from "../../utils/rbac";
+import { authorizeRBAC } from "../../config/rbacConfig";
 import { canAccessChannel, consumeSocketRateLimit } from "../socketSecurity";
 
 export const registerChannelHandlers = (

@@ -7,7 +7,8 @@ import {
 } from "@/src/components/ui/avatar";
 import { Lock, Hash, ArrowLeft, UserPlus, Users, Search, X } from "lucide-react";
 import { Input } from "@/src/components/ui/input";
-import { Channel, SidebarUser } from "@/src/types/chat";
+import type { Channel } from "@/src/types/channelTypes";
+import type { SidebarUser } from "@/src/types/workspaceTypes";
 import { usePermissions } from "@/src/hooks/usePermissions";
 import { resolveAvatarUrl } from "@/src/utils/avatarUtils";
 import InviteModal from "@/src/components/channels/InviteModal";

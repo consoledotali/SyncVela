@@ -4,12 +4,9 @@ import Image from "next/image";
 import React, { useEffect, useState, useCallback } from "react";
 import { X, Download, ChevronLeft, ChevronRight } from "lucide-react";
 import { getFileDetails } from "@/src/utils/attachmentUtils";
+import type { LightboxItem } from "@/src/types/messageTypes";
 
-export interface LightboxItem {
-  url: string;
-  fileName?: string;
-  mimeType?: string;
-}
+export type { LightboxItem };
 
 interface LightboxProps {
   items: LightboxItem[];

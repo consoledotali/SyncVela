@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import React, { useState } from "react";
 import { X, Loader2, Hash, Lock } from "lucide-react";
@@ -7,7 +7,7 @@ import { Input } from "@/src/components/ui/input";
 import { useChatStore } from "@/src/store/chatStore";
 import { useAuthStore } from "@/src/store/authStore";
 import { useSocket } from "@/src/providers/SocketProvider";
-import { authFetch } from "@/src/utils/apiClient";
+import { authFetch } from "@/src/utils/apiUtils";
 import { toast } from "sonner";
 
 interface NewChannelModalProps {

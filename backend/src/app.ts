@@ -2,15 +2,15 @@ import express, { Application } from "express";
 import cors from "cors";
 import cookieParser from "cookie-parser";
 import helmet from "helmet";
-import { corsOriginError, isAllowedOrigin } from "./config/cors";
+import { corsOriginError, isAllowedOrigin } from "./config/corsConfig";
 import authRoutes from "./routes/authRoutes";
 import userRoutes from "./routes/userRoutes";
 import uploadRoutes from "./routes/uploadRoutes";
 import workspaceRoutes from "./routes/workspaceRoutes";
 import channelRoutes from "./routes/channelRoutes";
 import messageRoutes from "./routes/messageRoutes";
-import { mutationRateLimit, uploadRateLimit } from "./middlewares/rateLimit";
-import { errorHandler, notFoundHandler } from "./middlewares/errorHandler";
+import { mutationRateLimit, uploadRateLimit } from "./config/rateLimitConfig";
+import { errorHandler, notFoundHandler } from "./controllers/errorController";
 
 export const createApp = (): Application => {
   const app: Application = express();

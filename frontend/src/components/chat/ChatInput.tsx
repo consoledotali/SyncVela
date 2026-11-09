@@ -10,7 +10,7 @@ import {
   channelMessagePayloadSchema,
   directMessagePayloadSchema,
   roomIdPayloadSchema,
-} from "@/src/utils/socket/socketSchemas";
+} from "@/src/utils/socketUtils";
 import { AttachmentPreview } from "./AttachmentPreview";
 import { Send, Paperclip, Loader2 } from "lucide-react";
 import { v4 as uuidv4 } from "uuid";

@@ -1,5 +1,5 @@
 import { StateCreator } from "zustand";
-import { ChatStore, UserSlice } from "@/src/types/chat";
+import type { ChatStore, UserSlice } from "@/src/types/storeTypes";
 
 export const createUserSlice: StateCreator<ChatStore, [], [], UserSlice> = (
   set,

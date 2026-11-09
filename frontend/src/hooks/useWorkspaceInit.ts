@@ -1,9 +1,9 @@
-import { useEffect } from "react";
+﻿import { useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { useChatStore } from "@/src/store/chatStore";
 import { useAuthStore } from "@/src/store/authStore";
-import { authFetch } from "@/src/utils/apiClient";
-import type { Workspace } from "@/src/types/chat";
+import { authFetch } from "@/src/utils/apiUtils";
+import type { Workspace } from "@/src/types/workspaceTypes";
 
 export const useWorkspaceInit = () => {
   const { token, isAuthenticated } = useAuthStore();

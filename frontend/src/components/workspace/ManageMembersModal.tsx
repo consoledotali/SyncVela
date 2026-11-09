@@ -1,11 +1,11 @@
-"use client";
+﻿"use client";
 
 import React, { useCallback, useEffect, useState } from "react";
 import { useChatStore, type WorkspaceRole } from "@/src/store/chatStore";
 import { useAuthStore } from "@/src/store/authStore";
 import { useSocket } from "@/src/providers/SocketProvider";
 import { X, Loader2, ShieldCheck, UserX, Crown } from "lucide-react";
-import { authFetch } from "@/src/utils/apiClient";
+import { authFetch } from "@/src/utils/apiUtils";
 import { toast } from "sonner";
 
 import {

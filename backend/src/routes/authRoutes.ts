@@ -17,7 +17,7 @@ import {
   authOnboardingRateLimit,
   authSessionRateLimit,
   credentialRateLimit,
-} from "../middlewares/rateLimit";
+} from "../config/rateLimitConfig";
 
 const router = Router();
 

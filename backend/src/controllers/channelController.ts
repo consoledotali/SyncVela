@@ -1,14 +1,11 @@
-import { Request, Response } from "express";
-import { ChannelType, Prisma } from "../generated/prisma/client";
-import prisma from "../config/db";
-import { authorizeRBAC } from "../utils/rbac";
+import { Response } from "express";
+import { ChannelType, Prisma } from "@prisma/client";
+import prisma from "../config/dbConfig";
+import { authorizeRBAC } from "../config/rbacConfig";
 import {
   channelMemberVisibilitySchema,
 } from "../validators/channelValidators";
-
-export interface AuthenticatedRequest extends Request {
-  user?: { userId: string };
-}
+import { AuthenticatedRequest } from "../types/authTypes";
 
 export const createChannel = async (
   req: AuthenticatedRequest,

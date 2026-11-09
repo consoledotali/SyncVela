@@ -1,22 +1,8 @@
 import { Request, Response, NextFunction } from "express";
-import { Socket } from "socket.io";
 import jwt, { TokenExpiredError } from "jsonwebtoken";
+import { JwtPayload, AuthenticatedSocket } from "../types/authTypes";
 
-export interface JwtPayload {
-  userId: string;
-}
-
-declare global {
-  namespace Express {
-    interface Request {
-      user?: JwtPayload;
-    }
-  }
-}
-
-export interface AuthenticatedSocket extends Socket {
-  user?: JwtPayload;
-}
+export { JwtPayload, AuthenticatedSocket };
 
 const verifyAccessToken = (token: string): JwtPayload => {
   const secret = process.env.JWT_SECRET;

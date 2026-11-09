@@ -1,6 +1,6 @@
-import { useState } from "react";
+﻿import { useState } from "react";
 import axios from "axios";
-import { authFetch } from "@/src/utils/apiClient";
+import { authFetch } from "@/src/utils/apiUtils";
 
 const MIME_TYPE_BY_EXTENSION: Record<string, string> = {
   "7z": "application/x-7z-compressed",

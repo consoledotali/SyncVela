@@ -1,11 +1,11 @@
-"use client";
+﻿"use client";
 
 import React, { createContext, useContext, useEffect, useState } from "react";
 import { io, Socket } from "socket.io-client";
 import { useQueryClient } from "@tanstack/react-query";
 import { useRouter } from "next/navigation";
 import { useAuthStore } from "@/src/store/authStore";
-import { refreshAccessToken } from "@/src/utils/apiClient";
+import { refreshAccessToken } from "@/src/utils/apiUtils";
 import { useChatStore } from "@/src/store/chatStore";
 
 interface SocketContextType {

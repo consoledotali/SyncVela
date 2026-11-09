@@ -1,7 +1,7 @@
-"use client";
+﻿"use client";
 
 import React, { useState } from "react";
-import { authFetch } from "@/src/utils/apiClient";
+import { authFetch } from "@/src/utils/apiUtils";
 import { useAuthStore } from "@/src/store/authStore";
 import { Button } from "@/src/components/ui/button";
 import { KeyRound, Loader2, CheckCircle2 } from "lucide-react";

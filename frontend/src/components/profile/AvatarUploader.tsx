@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import React, { useEffect, useRef, useState } from "react";
 import { useAuthStore } from "@/src/store/authStore";
@@ -9,7 +9,7 @@ import {
 } from "@/src/components/ui/avatar";
 import { Camera, Loader2 } from "lucide-react";
 import { useS3Upload } from "@/src/hooks/useS3Upload";
-import { authFetch } from "@/src/utils/apiClient";
+import { authFetch } from "@/src/utils/apiUtils";
 import { resolveAvatarUrl } from "@/src/utils/avatarUtils";
 import { toast } from "sonner";
 

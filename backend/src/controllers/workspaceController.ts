@@ -1,6 +1,6 @@
 import { Response } from "express";
-import prisma from "../config/db";
-import { AuthenticatedRequest } from "./channelController";
+import prisma from "../config/dbConfig";
+import { AuthenticatedRequest } from "../types/authTypes";
 import { workspaceOwnershipTransferSchema } from "../validators/workspaceValidators";
 
 export const createWorkspace = async (

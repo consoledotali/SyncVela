@@ -1,11 +1,9 @@
-import { useEffect } from "react";
+﻿import { useEffect } from "react";
 import { useAuthStore } from "@/src/store/authStore";
 import { useChatStore } from "@/src/store/chatStore";
 import { useSocket } from "@/src/providers/SocketProvider";
-import { authFetch } from "@/src/utils/apiClient";
-import type { Channel } from "@/src/types/chat";
-
-type ChannelWithUnread = Channel & { unreadCount?: number };
+import { authFetch } from "@/src/utils/apiUtils";
+import type { Channel, ChannelWithUnread } from "@/src/types/channelTypes";
 
 export const useChannelFetcher = () => {
   const { token } = useAuthStore();
@@ -41,7 +39,7 @@ export const useChannelFetcher = () => {
           }));
         }
       } catch (error) {
-        console.error("❌ Failed to fetch channels:", error);
+        console.error("âŒ Failed to fetch channels:", error);
       }
     };
 

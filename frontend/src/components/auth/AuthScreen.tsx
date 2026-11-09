@@ -23,7 +23,7 @@ import {
 } from "@/src/components/ui/card";
 import { Eye, EyeOff, Loader2, TriangleAlert } from "lucide-react";
 import { consumeInviteDestination } from "@/src/utils/inviteUtils";
-import ThemeToggle from "@/src/components/layout/ThemeToggle";
+import ThemeToggle from "@/src/components/ui/ThemeToggle";
 
 export function AuthScreen({
   defaultMode,

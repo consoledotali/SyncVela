@@ -1,5 +1,6 @@
 import { Request, Response, NextFunction } from "express";
-import { Permission, authorizeRBAC } from "../utils/rbac";
+import { Permission } from "../types/rbacTypes";
+import { authorizeRBAC } from "../config/rbacConfig";
 
 export const requirePermission = (requiredPermission: Permission) => {
   return async (

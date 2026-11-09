@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import React, { useState } from "react";
 import { useChatStore } from "@/src/store/chatStore";
@@ -16,7 +16,7 @@ import WorkspaceInviteModal from "./WorkspaceInviteModal";
 import ManageMembersModal from "./ManageMembersModal";
 import DeleteWorkspaceDialog from "./DeleteWorkspaceDialog";
 
-import { authFetch } from "@/src/utils/apiClient";
+import { authFetch } from "@/src/utils/apiUtils";
 import { toast } from "sonner";
 
 interface WorkspaceDropdownProps {

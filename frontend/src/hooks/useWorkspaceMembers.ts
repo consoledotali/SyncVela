@@ -1,9 +1,9 @@
-import { useEffect } from "react";
+﻿import { useEffect } from "react";
 import { useAuthStore } from "@/src/store/authStore";
 import { useChatStore } from "@/src/store/chatStore";
 import { useSocket } from "@/src/providers/SocketProvider";
-import { authFetch } from "@/src/utils/apiClient";
-import type { SidebarUser, WorkspaceRole } from "@/src/types/chat";
+import { authFetch } from "@/src/utils/apiUtils";
+import type { SidebarUser, WorkspaceRole } from "@/src/types/workspaceTypes";
 
 type WorkspaceMemberResponse = SidebarUser & {
   role: WorkspaceRole;

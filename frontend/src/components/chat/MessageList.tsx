@@ -1,5 +1,5 @@
 import React, { ForwardedRef } from "react";
-import { Message } from "@/src/types/chat";
+import type { Message } from "@/src/types/messageTypes";
 import MessageBubble from "./MessageBubble";
 import { Badge } from "@/src/components/ui/badge";
 import { Loader2 } from "lucide-react";

@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import Image from "next/image";
 import React, { useState, useEffect } from "react";
@@ -6,7 +6,7 @@ import { useChatStore } from "@/src/store/chatStore";
 import { useAuthStore } from "@/src/store/authStore";
 import { useSocket } from "@/src/providers/SocketProvider";
 import { X, UserPlus, Loader2, Check } from "lucide-react";
-import { authFetch } from "@/src/utils/apiClient";
+import { authFetch } from "@/src/utils/apiUtils";
 import { toast } from "sonner";
 
 interface InviteModalProps {

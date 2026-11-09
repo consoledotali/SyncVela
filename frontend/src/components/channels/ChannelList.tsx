@@ -1,12 +1,12 @@
-import React from "react";
+﻿import React from "react";
 import { useChatStore } from "@/src/store/chatStore";
 import { useAuthStore } from "@/src/store/authStore";
 import { useSocket } from "@/src/providers/SocketProvider";
 import { Hash, Lock, Plus } from "lucide-react";
 import { Badge } from "@/src/components/ui/badge";
 import { usePermissions } from "@/src/hooks/usePermissions";
-import { authFetch } from "@/src/utils/apiClient";
-import type { Channel } from "@/src/types/chat";
+import { authFetch } from "@/src/utils/apiUtils";
+import type { Channel } from "@/src/types/channelTypes";
 
 interface ChannelListProps {
   onOpenModal: () => void;

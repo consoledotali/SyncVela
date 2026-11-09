@@ -1,13 +1,13 @@
-import { useEffect } from "react";
+﻿import { useEffect } from "react";
 import { useAuthStore } from "@/src/store/authStore";
 import { useChatStore } from "@/src/store/chatStore";
 import { useSocket } from "@/src/providers/SocketProvider";
-import { authFetch } from "@/src/utils/apiClient";
+import { authFetch } from "@/src/utils/apiUtils";
 import type {
   Attachment,
   Message,
   MessageReaction,
-} from "@/src/types/chat";
+} from "@/src/types/messageTypes";
 
 type ChannelHistoryMessage = {
   id: string;

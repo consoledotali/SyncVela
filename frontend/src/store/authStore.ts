@@ -1,13 +1,7 @@
 import { create } from "zustand";
+import type { User } from "@/src/types/authTypes";
 
-export interface User {
-  id: string;
-  name: string;
-  email: string;
-  avatarUrl?: string | null;
-  provider?: "LOCAL" | "GOOGLE";
-  hasPassword?: boolean;
-}
+export type { User };
 
 interface AuthState {
   user: User | null;

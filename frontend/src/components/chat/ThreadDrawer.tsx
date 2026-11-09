@@ -1,19 +1,19 @@
-"use client";
+﻿"use client";
 
 import React, { useEffect, useRef } from "react";
 import { useChatStore } from "@/src/store/chatStore";
-import { Message } from "@/src/types/chat";
+import type { Message } from "@/src/types/messageTypes";
 import {
   channelMessagePayloadSchema,
   directMessagePayloadSchema,
-} from "@/src/utils/socket/socketSchemas";
-import { createRoomReceiptPayload } from "@/src/utils/socket/socketPayloads";
+  createRoomReceiptPayload,
+} from "@/src/utils/socketUtils";
 import { useAuthStore } from "@/src/store/authStore";
 import { useSocket } from "@/src/providers/SocketProvider";
 import { X, Loader2, Send } from "lucide-react";
 import MessageBubble from "./MessageBubble";
 import { v4 as uuidv4 } from "uuid";
-import { authFetch } from "@/src/utils/apiClient";
+import { authFetch } from "@/src/utils/apiUtils";
 
 interface ThreadReplyPayload {
   id: string;
@@ -85,13 +85,13 @@ export default function ThreadDrawer() {
           }
         } else {
           console.error(
-            "❌ Thread fetch failed:",
+            "âŒ Thread fetch failed:",
             response.status,
             await response.text().catch(() => ""),
           );
         }
       } catch (error) {
-        console.error("❌ Thread payload expansion critical failure:", error);
+        console.error("âŒ Thread payload expansion critical failure:", error);
       } finally {
         setIsFetchingThread(false);
       }

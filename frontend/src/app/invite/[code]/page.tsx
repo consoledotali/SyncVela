@@ -1,11 +1,11 @@
-"use client";
+﻿"use client";
 
 import React, { useEffect, useState, useRef } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { useAuthStore } from "@/src/store/authStore";
 import { Loader2, ShieldCheck, XCircle, UserCheck } from "lucide-react";
 import { Button } from "@/src/components/ui/button";
-import { authFetch } from "@/src/utils/apiClient";
+import { authFetch } from "@/src/utils/apiUtils";
 import { rememberInviteDestination } from "@/src/utils/inviteUtils";
 
 export default function InvitePage() {

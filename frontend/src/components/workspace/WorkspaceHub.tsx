@@ -1,7 +1,7 @@
 "use client";
 
 import ChatArea from "@/src/components/chat/ChatArea";
-import Sidebar from "@/src/components/layout/Sidebar";
+import Sidebar from "./Sidebar";
 
 export default function WorkspaceHub() {
   return (

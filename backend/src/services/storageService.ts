@@ -4,8 +4,9 @@ import {
   GetObjectCommand,
 } from "@aws-sdk/client-s3";
 import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
+import { StorageVisibility, RawAttachment } from "../types/storageTypes";
 
-export type StorageVisibility = "public" | "private";
+export { StorageVisibility, RawAttachment };
 
 const normalizeEndpoint = (endpoint: string): string => {
   return endpoint.replace(/\/+$/, "");
@@ -99,16 +100,6 @@ export const createAvatarDownloadUrl = (fileKey: string): Promise<string> => {
   const command = new GetObjectCommand({ Bucket: PUBLIC_BUCKET, Key: fileKey });
   return getSignedUrl(s3Client, command, { expiresIn: DOWNLOAD_URL_TTL });
 };
-
-export interface RawAttachment {
-  id?: string;
-  url: string;
-  fileKey?: string | null;
-  fileName: string;
-  mimeType: string;
-  size: number;
-  [key: string]: unknown;
-}
 
 export const signAttachments = async <T extends RawAttachment>(
   attachments: T[] | undefined | null,

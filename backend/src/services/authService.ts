@@ -1,39 +1,19 @@
 import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
-import prisma from "../config/db";
-import { User } from "../generated/prisma/client";
+import prisma from "../config/dbConfig";
+import { User } from "@prisma/client";
 import crypto from "crypto";
 import { validateEnterpriseEmail } from "../validators/emailValidator";
 import { sendOtpEmail, sendPasswordResetOtpEmail } from "./emailService";
 import { OAuth2Client } from "google-auth-library";
+import {
+  AuthTokens,
+  JwtPayload,
+  SafeUser,
+  AuthResponse,
+} from "../types/authTypes";
 
-export interface AuthTokens {
-  accessToken: string;
-  refreshToken: string;
-}
-
-export interface JwtPayload {
-  userId: string;
-  jti?: string;
-}
-
-export type SafeUser = Omit<
-  User,
-  | "password"
-  | "refreshToken"
-  | "resetToken"
-  | "resetTokenExpiresAt"
-  | "verificationToken"
-  | "verificationExpiresAt"
-  | "createdAt"
-  | "updatedAt"
-  | "googleId"
-> & { hasPassword: boolean };
-
-export interface AuthResponse {
-  user: SafeUser;
-  tokens: AuthTokens;
-}
+export { AuthTokens, JwtPayload, SafeUser, AuthResponse };
 
 const googleClient = new OAuth2Client(process.env.GOOGLE_CLIENT_ID);
 

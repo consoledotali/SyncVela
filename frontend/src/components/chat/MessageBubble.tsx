@@ -14,13 +14,10 @@ import { getFileDetails } from "@/src/utils/attachmentUtils";
 import { MessageStatus } from "./MessageStatus";
 import { MessageActions } from "./MessageActions";
 import { Lightbox, LightboxItem } from "./Lightbox";
-import { createReactionPayload } from "@/src/utils/socket/socketPayloads";
+import { createReactionPayload } from "@/src/utils/socketUtils";
 import { resolveAvatarUrl } from "@/src/utils/avatarUtils";
-import type {
-  Attachment,
-  Message,
-  SidebarUser,
-} from "@/src/types/chat";
+import type { Attachment, Message } from "@/src/types/messageTypes";
+import type { SidebarUser } from "@/src/types/workspaceTypes";
 
 type MessageBubbleProps = {
   msg: Message;
