@@ -1,11 +1,13 @@
 import { createClient } from "redis";
 
-const redisUrl = process.env.REDIS_URL?.trim();
+const rawRedisUrl = process.env.REDIS_URL?.trim();
+const redisUrl = rawRedisUrl?.replace(/\/\/localhost(?=[:/]|$)/, "//127.0.0.1");
 
 export const redisClient = redisUrl
   ? createClient({
       url: redisUrl,
       socket: {
+        connectTimeout: 10_000,
         reconnectStrategy(retries) {
           const maxDelayMs = 5_000;
           return Math.min(250 * 2 ** Math.min(retries, 5), maxDelayMs);
