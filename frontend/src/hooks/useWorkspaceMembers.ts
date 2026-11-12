@@ -1,7 +1,6 @@
-﻿import { useEffect } from "react";
+import { useEffect } from "react";
 import { useAuthStore } from "@/src/store/authStore";
 import { useChatStore } from "@/src/store/chatStore";
-import { useSocket } from "@/src/providers/SocketProvider";
 import { authFetch } from "@/src/utils/apiUtils";
 import type { SidebarUser, WorkspaceRole } from "@/src/types/workspaceTypes";
 
@@ -13,7 +12,6 @@ type WorkspaceMemberResponse = SidebarUser & {
 export const useWorkspaceMembers = () => {
   const { token, user } = useAuthStore();
   const { activeWorkspaceId, setUsers, setCurrentUserRole } = useChatStore();
-  const { socket } = useSocket();
 
   useEffect(() => {
     if (!activeWorkspaceId || !token || !user) {
@@ -58,10 +56,6 @@ export const useWorkspaceMembers = () => {
     };
 
     fetchMembers();
-
-    if (socket) {
-      socket.emit("join_workspace", activeWorkspaceId);
-    }
-  }, [activeWorkspaceId, token, user, setUsers, setCurrentUserRole, socket]);
+  }, [activeWorkspaceId, token, user, setUsers, setCurrentUserRole]);
 };
 

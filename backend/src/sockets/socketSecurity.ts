@@ -33,10 +33,14 @@ export async function consumeSocketRateLimit(
   limit: number,
   windowMs: number,
 ): Promise<boolean> {
-  if (!redisClient?.isOpen) return process.env.NODE_ENV !== "production";
+  if (!redisClient?.isReady) return process.env.NODE_ENV !== "production";
 
-  const key = `syncvela:socket-rate:${event}:${userId}`;
-  const count = await redisClient.incr(key);
-  if (count === 1) await redisClient.pExpire(key, windowMs);
-  return count <= limit;
+  try {
+    const key = `syncvela:socket-rate:${event}:${userId}`;
+    const count = await redisClient.incr(key);
+    if (count === 1) await redisClient.pExpire(key, windowMs);
+    return count <= limit;
+  } catch {
+    return process.env.NODE_ENV !== "production";
+  }
 }
