@@ -52,23 +52,25 @@ export const usePresenceEvents = (socket: Socket | null) => {
 
     const handleUserOnline = (onlineUserId: string) => {
       const { onlineUsers, setOnlineUsers } = chatState();
-      if (!onlineUsers.includes(onlineUserId)) {
-        setOnlineUsers([...onlineUsers, onlineUserId]);
+      const normalizedId = String(onlineUserId);
+      if (!onlineUsers.includes(normalizedId)) {
+        setOnlineUsers([...onlineUsers, normalizedId]);
       }
     };
 
     const handleUserOffline = (offlineUserId: string) => {
       const { onlineUsers, setOnlineUsers } = chatState();
-      setOnlineUsers(onlineUsers.filter((id) => id !== offlineUserId));
+      const normalizedId = String(offlineUserId);
+      setOnlineUsers(onlineUsers.filter((id) => id !== normalizedId));
     };
 
     const handleGetOnlineUsers = (payload: OnlineUsersPayload | string[]) => {
       if (Array.isArray(payload)) {
-        chatState().setOnlineUsers(payload);
+        chatState().setOnlineUsers(payload.map(String));
         return;
       }
       if (payload && payload.workspaceId === chatState().activeWorkspaceId) {
-        chatState().setOnlineUsers(payload.userIds);
+        chatState().setOnlineUsers(payload.userIds.map(String));
       }
     };
 
@@ -116,11 +118,16 @@ export const usePresenceEvents = (socket: Socket | null) => {
     socket.on("getOnlineUsers", handleGetOnlineUsers);
     socket.on("avatar_updated", handleAvatarUpdated);
 
-    if (activeWorkspaceId) {
-      socket.emit("requestOnlineUsers", activeWorkspaceId);
-    }
+    const syncPresence = () => {
+      if (activeWorkspaceId && socket.connected) {
+        socket.emit("requestOnlineUsers", activeWorkspaceId);
+      }
+    };
+
+    socket.on("connect", syncPresence);
 
     return () => {
+      socket.off("connect", syncPresence);
       socket.off("messagesRead", handleMessagesRead);
       socket.off("userTyping", handleDirectTyping);
       socket.off("userStopTyping", handleDirectStopTyping);

@@ -21,7 +21,8 @@ export const createUserSlice: StateCreator<ChatStore, [], [], UserSlice> = (
         onlineUsers: state.onlineUsers.filter((id) => id !== userId),
       };
     }),
-  setOnlineUsers: (userIds) => set({ onlineUsers: userIds }),
+  setOnlineUsers: (userIds) =>
+    set({ onlineUsers: [...new Set(userIds.map(String))] }),
 
   incrementUnread: (userId) =>
     set((state) => {

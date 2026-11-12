@@ -8,6 +8,24 @@ export const getOnlineWorkspaceMemberIds = async (
   io: Server,
   workspaceId: string,
 ): Promise<string[]> => {
+  if (redisClient?.isReady) {
+    try {
+      const workspaceMembers = await prisma.workspaceMember.findMany({
+        where: { workspaceId },
+        select: { userId: true },
+      });
+      if (workspaceMembers.length === 0) return [];
+      const userIds = workspaceMembers.map((member) => member.userId);
+      const keys = userIds.map((id) => `syncvela:presence:${id}`);
+      const presenceStatuses = await redisClient.mGet(keys);
+      return userIds.filter(
+        (_, index) => presenceStatuses[index] === "online",
+      );
+    } catch (error) {
+      console.error("[presence] Redis lookup error, falling back to sockets", error);
+    }
+  }
+
   const workspaceSockets = await io
     .in(`workspace_${workspaceId}`)
     .fetchSockets();
@@ -41,6 +59,18 @@ export const registerPresenceHandlers = async (
     });
   };
 
+  const markUserOnline = async () => {
+    if (redisClient?.isReady) {
+      try {
+        await redisClient.set(`syncvela:presence:${userId}`, "online", {
+          EX: 90,
+        });
+      } catch (error) {
+        console.error("[presence] Redis set error", error);
+      }
+    }
+  };
+
   socket.data.userId = userId;
   await socket.join(userId);
 
@@ -52,11 +82,7 @@ export const registerPresenceHandlers = async (
     memberships.map(({ workspaceId }) => `workspace_${workspaceId}`),
   );
 
-  if (redisClient?.isOpen) {
-    await redisClient.set(`syncvela:presence:${userId}`, "online", {
-      EX: 90,
-    });
-  }
+  await markUserOnline();
   await emitPresenceToSharedWorkspaces("userOnline");
 
   socket.on("presence:heartbeat", async () => {
@@ -64,23 +90,20 @@ export const registerPresenceHandlers = async (
       !(await consumeSocketRateLimit(
         userId,
         "presence-heartbeat",
-        40,
+        60,
         60_000,
       ))
     )
       return;
-    if (redisClient?.isReady) {
-      await redisClient.set(`syncvela:presence:${userId}`, "online", {
-        EX: 90,
-      });
-    }
+    await markUserOnline();
   });
 
   socket.on("requestOnlineUsers", async (workspaceId: unknown) => {
-    if (!(await consumeSocketRateLimit(userId, "presence-list", 30, 60_000)))
+    if (!(await consumeSocketRateLimit(userId, "presence-list", 60, 60_000)))
       return;
     if (typeof workspaceId !== "string") return;
     if (!(await isWorkspaceMember(userId, workspaceId))) return;
+    await markUserOnline();
     socket.emit("getOnlineUsers", {
       workspaceId,
       userIds: await getOnlineWorkspaceMemberIds(io, workspaceId),
@@ -98,7 +121,7 @@ export const registerPresenceHandlers = async (
       }) => void,
     ) => {
       if (
-        !(await consumeSocketRateLimit(userId, "join-workspace", 30, 60_000))
+        !(await consumeSocketRateLimit(userId, "join-workspace", 60, 60_000))
       ) {
         callback?.({ error: "Too many join requests" });
         return;
@@ -109,6 +132,7 @@ export const registerPresenceHandlers = async (
         return;
       }
       await socket.join(`workspace_${workspaceId}`);
+      await markUserOnline();
       const onlineUserIds = await getOnlineWorkspaceMemberIds(io, workspaceId);
       socket.emit("getOnlineUsers", { workspaceId, userIds: onlineUserIds });
       io.to(`workspace_${workspaceId}`).emit("userOnline", userId);
@@ -121,7 +145,11 @@ export const registerPresenceHandlers = async (
       const activeSockets = await io.in(userId).fetchSockets();
       if (activeSockets.length === 0) {
         if (redisClient?.isReady) {
-          await redisClient.del(`syncvela:presence:${userId}`);
+          try {
+            await redisClient.del(`syncvela:presence:${userId}`);
+          } catch (error) {
+            console.error("[presence] Redis del error", error);
+          }
         }
         await emitPresenceToSharedWorkspaces("userOffline");
       }
